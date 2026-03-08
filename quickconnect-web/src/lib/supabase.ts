@@ -16,5 +16,12 @@ if (!supabaseConfigured) {
 
 export const supabase = createClient<Database>(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<unknown>) => {
+        return fn()
+      },
+    },
+  }
 )
