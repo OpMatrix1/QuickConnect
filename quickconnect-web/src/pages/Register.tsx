@@ -5,13 +5,12 @@ import { cn, CITIES } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabase'
 
 type Role = 'customer' | 'provider'
 
 export function Register() {
   const navigate = useNavigate()
-  const { signUp, loading } = useAuth()
+  const { signUp } = useAuth()
   const [role, setRole] = useState<Role>('customer')
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
@@ -22,6 +21,7 @@ export function Register() {
   const [businessName, setBusinessName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,33 +42,21 @@ export function Register() {
       return
     }
 
-    const { error: signUpError } = await signUp(email, password, fullName, role)
-
-    if (signUpError) {
-      setError(signUpError)
+    setSubmitting(true)
+    try {
+      const { error: signUpError } = await signUp(email, password, fullName, role)
+      if (signUpError) {
+        setError(signUpError)
+        return
+      }
+    } catch (err) {
+      setError('Unable to connect. Please check your internet and try again.')
       return
+    } finally {
+      setSubmitting(false)
     }
 
-    // Update profile with optional fields (phone, city)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      const updates: { phone?: string; city?: string } = {}
-      if (phone.trim()) updates.phone = phone.trim()
-      if (city) updates.city = city
-
-      if (Object.keys(updates).length > 0) {
-        await supabase.from('profiles').update(updates).eq('id', user.id)
-      }
-
-      if (role === 'provider' && businessName.trim()) {
-        await supabase
-          .from('service_providers')
-          .update({ business_name: businessName.trim() })
-          .eq('profile_id', user.id)
-      }
-    }
-
-    navigate(ROUTES.LOGIN, { state: { message: 'Account created successfully. Please sign in.' } })
+    navigate(ROUTES.LOGIN, { state: { message: 'Account created! Please check your email to verify your account before signing in.' } })
   }
 
   return (
@@ -285,7 +273,7 @@ export function Register() {
           </span>
         </label>
 
-        <Button type="submit" fullWidth size="lg" loading={loading}>
+        <Button type="submit" fullWidth size="lg" loading={submitting}>
           Create account
         </Button>
       </form>

@@ -228,7 +228,7 @@ export function Dashboard() {
     }
   }
 
-  if (authLoading || !profile) {
+  if (authLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Spinner size="lg" />
@@ -237,6 +237,10 @@ export function Dashboard() {
   }
 
   if (!user) {
+    return <Navigate to={ROUTES.LOGIN} replace />
+  }
+
+  if (!profile) {
     return <Navigate to={ROUTES.LOGIN} replace />
   }
 

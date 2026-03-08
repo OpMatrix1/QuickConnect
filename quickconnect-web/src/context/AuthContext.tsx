@@ -20,6 +20,18 @@ interface AuthContextType extends AuthState {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const AUTH_TIMEOUT_MS = 12_000
+
+function withTimeout<T>(promise: PromiseLike<T>, ms = AUTH_TIMEOUT_MS): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Request timed out')), ms)
+    Promise.resolve(promise).then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      (e) => { clearTimeout(timer); reject(e) },
+    )
+  })
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -29,12 +41,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
 
   const fetchProfile = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    return data as Profile | null
+    try {
+      const { data } = await withTimeout(
+        supabase.from('profiles').select('*').eq('id', userId).single()
+      )
+      return data as Profile | null
+    } catch {
+      return null
+    }
   }, [])
 
   const refreshProfile = useCallback(async () => {
@@ -44,7 +58,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state.user, fetchProfile])
 
   useEffect(() => {
+    // Force loading to false after 5 seconds no matter what
+    const timeout = setTimeout(() => {
+      setState((prev) => prev.loading ? { ...prev, loading: false } : prev)
+    }, 5000)
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(timeout)
       if (session?.user) {
         fetchProfile(session.user.id).then((profile) => {
           setState({ user: session.user, session, profile, loading: false })
@@ -52,6 +72,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setState({ user: null, session: null, profile: null, loading: false })
       }
+    }).catch(() => {
+      clearTimeout(timeout)
+      setState({ user: null, session: null, profile: null, loading: false })
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -65,44 +88,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [fetchProfile])
 
   const signUp = async (email: string, password: string, fullName: string, role: 'customer' | 'provider') => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName, role },
-      },
-    })
-
-    if (error) return { error: error.message }
-
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        full_name: fullName,
-        role,
-        email_verified: false,
-      })
-      if (profileError) return { error: profileError.message }
-
-      if (role === 'provider') {
-        await supabase.from('service_providers').insert({
-          profile_id: data.user.id,
-          business_name: fullName,
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName, role } },
         })
+      )
+      if (error) return { error: error.message }
+      return { error: null }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Request timed out') {
+        return { error: 'Request timed out. The server may be unavailable — please try again shortly.' }
       }
+      return { error: 'Unable to connect to server. Please try again.' }
     }
-
-    return { error: null }
   }
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) return { error: error.message }
-    return { error: null }
+    try {
+      const { error } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password })
+      )
+      if (error) return { error: error.message }
+      return { error: null }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Request timed out') {
+        return { error: 'Request timed out. The server may be unavailable — please try again shortly.' }
+      }
+      return { error: 'Unable to connect to server. Please try again.' }
+    }
   }
 
   const signOut = async () => {

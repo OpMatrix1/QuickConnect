@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Mail, Lock, ArrowRight } from 'lucide-react'
 import { ROUTES, APP_NAME } from '@/lib/constants'
@@ -8,22 +8,36 @@ import { Button } from '@/components/ui/Button'
 export function Login() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { signIn, loading } = useAuth()
+  const { signIn, user, loading: authLoading } = useAuth()
   const successMessage = (location.state as { message?: string } | null)?.message
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  // Redirect when auth state has a logged-in user
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate(ROUTES.HOME, { replace: true })
+    }
+  }, [authLoading, user, navigate])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
-    const { error: signInError } = await signIn(email, password)
-    if (signInError) {
-      setError(signInError)
-      return
+    setSubmitting(true)
+    try {
+      const { error: signInError } = await signIn(email, password)
+      if (signInError) {
+        setError(signInError)
+      }
+      // Navigation handled by useEffect when auth state updates
+    } catch (err) {
+      setError('Unable to connect. Please check your internet and try again.')
+    } finally {
+      setSubmitting(false)
     }
-    navigate(ROUTES.DASHBOARD)
   }
 
   return (
@@ -122,7 +136,7 @@ export function Login() {
               type="submit"
               fullWidth
               size="lg"
-              loading={loading}
+              loading={submitting}
               icon={<ArrowRight className="size-5" />}
             >
               Sign in
