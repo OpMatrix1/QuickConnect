@@ -1,27 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  /* Fiverr green — primary brand color */
+  --color-primary-50: #e4f7ed;
+  --color-primary-100: #c2edd9;
+  --color-primary-200: #8ed9b7;
+  --color-primary-300: #56c490;
+  --color-primary-400: #2ec87b;
+  --color-primary-500: #1dbf73;
+  --color-primary-600: #19a463;
+  --color-primary-700: #158753;
+  --color-primary-800: #116b41;
+  --color-primary-900: #0d5433;
 
-  --color-accent-50: #fdf4ff;
-  --color-accent-100: #fae8ff;
-  --color-accent-200: #f5d0fe;
-  --color-accent-300: #f0abfc;
-  --color-accent-400: #e879f9;
-  --color-accent-500: #d946ef;
-  --color-accent-600: #c026d3;
-  --color-accent-700: #a21caf;
-  --color-accent-800: #86198f;
-  --color-accent-900: #701a75;
+  /* Fiverr dark teal — accent for hero bg, etc. */
+  --color-accent-50: #e6f0ee;
+  --color-accent-100: #c0d8d2;
+  --color-accent-200: #8fb9b0;
+  --color-accent-300: #5c9a8d;
+  --color-accent-400: #2e7d70;
+  --color-accent-500: #1a6659;
+  --color-accent-600: #155549;
+  --color-accent-700: #104439;
+  --color-accent-800: #0b3329;
+  --color-accent-900: #062219;
 
   --color-success-50: #f0fdf4;
   --color-success-500: #22c55e;
