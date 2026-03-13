@@ -312,12 +312,12 @@ VALUES
 -- 9. PAYMENTS  (for completed and in-progress bookings)
 -- =============================================================================
 
-INSERT INTO public.payments (booking_id, amount, method, status, transaction_ref, created_at)
+INSERT INTO public.payments (booking_id, amount, method, status, transaction_ref, customer_confirmed, provider_confirmed, created_at)
 VALUES
-  ('bb000000-0000-0000-0000-000000000001', 350.00,  'orange_money',   'completed', 'OM-2026-00101', NOW() - INTERVAL '10 days'),
-  ('bb000000-0000-0000-0000-000000000002', 800.00,  'btc_myzaka',     'completed', 'BM-2026-00202', NOW() - INTERVAL '7 days'),
-  ('bb000000-0000-0000-0000-000000000005', 500.00,  'mascom_myzaka',  'pending',   'MM-2026-00503', NOW() - INTERVAL '1 day'),
-  ('bb000000-0000-0000-0000-000000000006', 2500.00, 'orange_money',   'completed', 'OM-2026-00604', NOW() - INTERVAL '20 days');
+  ('bb000000-0000-0000-0000-000000000001', 350.00,  'orange_money',   'released', 'OM-2026-00101', TRUE, TRUE, NOW() - INTERVAL '10 days'),
+  ('bb000000-0000-0000-0000-000000000002', 800.00,  'btc_myzaka',     'released', 'BM-2026-00202', TRUE, TRUE, NOW() - INTERVAL '7 days'),
+  ('bb000000-0000-0000-0000-000000000005', 500.00,  'mascom_myzaka',  'held',     'MM-2026-00503', FALSE, FALSE, NOW() - INTERVAL '1 day'),
+  ('bb000000-0000-0000-0000-000000000006', 2500.00, 'orange_money',   'released', 'OM-2026-00604', TRUE, TRUE, NOW() - INTERVAL '20 days');
 
 -- =============================================================================
 -- 10. REVIEWS  (for completed bookings — triggers update provider rating)
@@ -379,6 +379,15 @@ VALUES
   ('dc000000-0000-0000-0000-000000000004', 'cc000000-0000-0000-0000-000000000003', 'dd000000-0000-0000-0000-000000000004', 'Hi Lesego, I saw your quote for my wedding. Do you have a portfolio I can look at?', TRUE, NOW() - INTERVAL '3 days'),
   ('dc000000-0000-0000-0000-000000000004', 'dd000000-0000-0000-0000-000000000004', 'cc000000-0000-0000-0000-000000000003', 'Hello Onkemetse! Congratulations! Yes, I will send you a link to my latest wedding gallery. I have shot over 30 weddings in the Maun area.', TRUE, NOW() - INTERVAL '3 days' + INTERVAL '15 minutes'),
   ('dc000000-0000-0000-0000-000000000004', 'cc000000-0000-0000-0000-000000000003', 'dd000000-0000-0000-0000-000000000004', 'The photos look amazing! Can we do a quick engagement shoot as well? What would that cost?', FALSE, NOW() - INTERVAL '2 days');
+
+-- =============================================================================
+-- 11b. CATEGORY REQUESTS
+-- =============================================================================
+
+INSERT INTO public.category_requests (requested_by, name, description, status, admin_feedback, created_at)
+VALUES
+  ('dd000000-0000-0000-0000-000000000001', 'Solar Installation', 'Solar panel installation, maintenance, and battery backup systems for homes and businesses.', 'pending', NULL, NOW() - INTERVAL '3 days'),
+  ('dd000000-0000-0000-0000-000000000003', 'Pest Control', 'Fumigation, rodent control, termite treatment, and general pest management services.', 'pending', NULL, NOW() - INTERVAL '5 days');
 
 -- =============================================================================
 -- 12. NOTIFICATIONS

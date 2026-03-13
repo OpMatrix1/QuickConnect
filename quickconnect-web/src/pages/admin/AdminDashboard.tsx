@@ -41,6 +41,7 @@ export function AdminDashboard() {
   const [totalBookings, setTotalBookings] = useState(0)
   const [totalRevenue, setTotalRevenue] = useState(0)
   const [activePosts, setActivePosts] = useState(0)
+  const [pendingCategoryRequests, setPendingCategoryRequests] = useState(0)
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([])
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export function AdminDashboard() {
           bookingsRes,
           postsRes,
           paymentsRes,
+          catReqRes,
           recentUsersRes,
           recentBookingsRes,
           recentPostsRes,
@@ -80,7 +82,11 @@ export function AdminDashboard() {
           supabase
             .from('payments')
             .select('amount')
-            .eq('status', 'completed'),
+            .in('status', ['released'] as any),
+          supabase
+            .from('category_requests')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'pending'),
           supabase
             .from('profiles')
             .select('id, full_name, created_at')
@@ -102,6 +108,7 @@ export function AdminDashboard() {
         setTotalProviders(providersRes.count ?? 0)
         setTotalBookings(bookingsRes.count ?? 0)
         setActivePosts(postsRes.count ?? 0)
+        setPendingCategoryRequests(catReqRes.count ?? 0)
 
         const payments = (paymentsRes.data || []) as { amount: number }[]
         setTotalRevenue(payments.reduce((sum, p) => sum + p.amount, 0))
@@ -305,12 +312,21 @@ export function AdminDashboard() {
           <Link to={ROUTES.ADMIN_CATEGORIES}>
             <Card padding="md" hover className="min-w-[200px]">
               <CardContent className="flex items-center gap-3">
-                <span className="flex size-10 items-center justify-center rounded-lg bg-success-100 text-success-600">
+                <span className="relative flex size-10 items-center justify-center rounded-lg bg-success-100 text-success-600">
                   <FolderOpen className="size-5" />
+                  {pendingCategoryRequests > 0 && (
+                    <span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-danger-500 text-[10px] font-bold text-white">
+                      {pendingCategoryRequests}
+                    </span>
+                  )}
                 </span>
                 <div>
                   <p className="font-medium text-gray-900">Manage Categories</p>
-                  <p className="text-sm text-gray-500">Service categories</p>
+                  <p className="text-sm text-gray-500">
+                    {pendingCategoryRequests > 0
+                      ? `${pendingCategoryRequests} pending request${pendingCategoryRequests > 1 ? 's' : ''}`
+                      : 'Service categories'}
+                  </p>
                 </div>
                 <ArrowRight className="ml-auto size-5 text-gray-400" />
               </CardContent>

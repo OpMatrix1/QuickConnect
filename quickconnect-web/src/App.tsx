@@ -5,7 +5,7 @@ import { Layout } from '@/components/layout/Layout'
 import { Home } from '@/pages/Home'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
-import { Placeholder } from '@/pages/Placeholder'
+import { AdminCategories } from '@/pages/admin/AdminCategories'
 import { Dashboard } from '@/pages/Dashboard'
 import { Profile } from '@/pages/Profile'
 import { AdminDashboard } from '@/pages/admin/AdminDashboard'
@@ -43,7 +43,7 @@ function App() {
               <Route path={ROUTES.ADMIN} element={<AdminDashboard />} />
               <Route path={ROUTES.ADMIN_USERS} element={<AdminUsers />} />
               <Route path={ROUTES.ADMIN_REPORTS} element={<AdminReports />} />
-              <Route path={ROUTES.ADMIN_CATEGORIES} element={<Placeholder name="Manage Categories" />} />
+              <Route path={ROUTES.ADMIN_CATEGORIES} element={<AdminCategories />} />
             </Route>
             <Route path="*" element={<Navigate to={ROUTES.HOME} replace />} />
           </Routes>

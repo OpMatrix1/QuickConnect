@@ -37,10 +37,15 @@ export type ReviewInsert = Database['public']['Tables']['reviews']['Insert']
 
 export type Notification = Database['public']['Tables']['notifications']['Row']
 
+export type CategoryRequest = Database['public']['Tables']['category_requests']['Row']
+export type CategoryRequestInsert = Database['public']['Tables']['category_requests']['Insert']
+
 export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 export type PostStatus = 'active' | 'matched' | 'expired' | 'cancelled'
 export type Urgency = 'low' | 'medium' | 'high' | 'emergency'
 export type PaymentMethod = 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
+export type PaymentStatus = 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
+export type CategoryRequestStatus = 'pending' | 'approved' | 'declined'
 export type PriceType = 'fixed' | 'hourly' | 'quote'
 export type UserRole = 'customer' | 'provider' | 'admin'
 

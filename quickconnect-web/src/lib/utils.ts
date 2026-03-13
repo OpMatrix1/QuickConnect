@@ -79,6 +79,21 @@ export const POST_STATUS_CONFIG = {
   cancelled: { label: 'Cancelled', color: 'bg-red-100 text-red-700' },
 } as const
 
+export const PAYMENT_STATUS_CONFIG = {
+  pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-700' },
+  held: { label: 'In Escrow', color: 'bg-blue-100 text-blue-700' },
+  released: { label: 'Released', color: 'bg-green-100 text-green-700' },
+  refunded: { label: 'Refunded', color: 'bg-orange-100 text-orange-700' },
+  failed: { label: 'Failed', color: 'bg-red-100 text-red-700' },
+  disputed: { label: 'Disputed', color: 'bg-purple-100 text-purple-700' },
+} as const
+
+export const CATEGORY_REQUEST_STATUS_CONFIG = {
+  pending: { label: 'Pending', color: 'bg-yellow-100 text-yellow-700' },
+  approved: { label: 'Approved', color: 'bg-green-100 text-green-700' },
+  declined: { label: 'Declined', color: 'bg-red-100 text-red-700' },
+} as const
+
 export const SERVICE_CATEGORIES = [
   'Plumbing',
   'Electrical',

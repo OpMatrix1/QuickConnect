@@ -57,7 +57,7 @@ export function CreatePost() {
   function validate(): FormErrors {
     const err: FormErrors = {}
     if (!title.trim()) err.title = 'Title is required'
-    if (title.length > 200) err.title = 'Title must be 200 characters or less'
+    if (title.length > 60) err.title = 'Title must be 60 characters or less'
     if (!description.trim()) err.description = 'Description is required'
     if (!categoryId) err.categoryId = 'Please select a category'
     const min = budgetMin ? parseFloat(budgetMin) : null
@@ -128,6 +128,35 @@ export function CreatePost() {
         setLoading(false)
         return
       }
+
+      const { data: matchingProviders } = await supabase
+        .from('services')
+        .select('provider_id, service_providers!services_provider_id_fkey(profile_id)')
+        .eq('category_id', categoryId)
+        .eq('is_active', true)
+
+      if (matchingProviders && matchingProviders.length > 0) {
+        const seen = new Set<string>()
+        const notifications: { user_id: string; type: string; title: string; body: string; data: Record<string, string> }[] = []
+        for (const svc of matchingProviders as any[]) {
+          const profileId = svc.service_providers?.profile_id
+          if (profileId && profileId !== user.id && !seen.has(profileId)) {
+            seen.add(profileId)
+            const categoryName = categories.find((c) => c.id === categoryId)?.name || 'your category'
+            notifications.push({
+              user_id: profileId,
+              type: 'new_post',
+              title: 'New job in your category',
+              body: `A new post "${title.trim()}" was created in ${categoryName}. Check it out!`,
+              data: { post_id: newPostId },
+            })
+          }
+        }
+        if (notifications.length > 0) {
+          await supabase.from('notifications').insert(notifications as any)
+        }
+      }
+
       navigate(ROUTES.POST_DETAIL.replace(':id', newPostId))
     } catch (err) {
       setErrors({ submit: err instanceof Error ? err.message : 'Something went wrong' })
@@ -185,15 +214,20 @@ export function CreatePost() {
               </div>
             )}
 
-            <Input
-              label="Title"
-              placeholder="e.g. Need a plumber for bathroom repair"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              error={errors.title}
-              maxLength={200}
-              required
-            />
+            <div>
+              <Input
+                label="Title"
+                placeholder="e.g. Plumber for bathroom repair"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                error={errors.title}
+                maxLength={60}
+                required
+              />
+              <p className="mt-1 text-xs text-gray-400">
+                {title.length}/60 — Keep it short and specific
+              </p>
+            </div>
 
             <Textarea
               label="Description"

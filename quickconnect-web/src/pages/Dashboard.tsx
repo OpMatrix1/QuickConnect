@@ -11,6 +11,8 @@ import {
   ArrowRight,
   Plus,
   TrendingUp,
+  FolderPlus,
+  Send,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -36,6 +38,9 @@ import {
   Avatar,
   Spinner,
   EmptyState,
+  Input,
+  Textarea,
+  Modal,
 } from '@/components/ui'
 
 type PostWithCategory = LookingForPost & {
@@ -66,6 +71,15 @@ export function Dashboard() {
   const [providerBookings, setProviderBookings] = useState<BookingWithProvider[]>([])
   const [opportunityPosts, setOpportunityPosts] = useState<PostWithDetails[]>([])
   const [earnings, setEarnings] = useState(0)
+
+  // Category request state (provider)
+  const [catRequestModal, setCatRequestModal] = useState(false)
+  const [catReqName, setCatReqName] = useState('')
+  const [catReqDescription, setCatReqDescription] = useState('')
+  const [catReqSaving, setCatReqSaving] = useState(false)
+  const [catReqError, setCatReqError] = useState<string | null>(null)
+  const [catReqSuccess, setCatReqSuccess] = useState(false)
+  const [myRequests, setMyRequests] = useState<{ id: string; name: string; status: string; admin_feedback: string | null }[]>([])
 
   useEffect(() => {
     if (!user || !profile) {
@@ -226,6 +240,13 @@ export function Dashboard() {
         .limit(5)
       setOpportunityPosts((postsData || []) as unknown as PostWithDetails[])
     }
+
+    const { data: reqData } = await supabase
+      .from('category_requests')
+      .select('id, name, status, admin_feedback')
+      .eq('requested_by', profileId)
+      .order('created_at', { ascending: false })
+    setMyRequests((reqData || []) as { id: string; name: string; status: string; admin_feedback: string | null }[])
   }
 
   if (authLoading) {
@@ -242,6 +263,40 @@ export function Dashboard() {
 
   if (!profile) {
     return <Navigate to={ROUTES.LOGIN} replace />
+  }
+
+  async function handleSubmitCategoryRequest() {
+    if (!user || !catReqName.trim()) {
+      setCatReqError('Category name is required')
+      return
+    }
+    setCatReqSaving(true)
+    setCatReqError(null)
+    try {
+      const { error: insertErr } = await supabase.from('category_requests').insert({
+        requested_by: user.id,
+        name: catReqName.trim(),
+        description: catReqDescription.trim() || null,
+      } as any)
+      if (insertErr) throw insertErr
+      setCatReqSuccess(true)
+      setCatReqName('')
+      setCatReqDescription('')
+      const { data: reqData } = await supabase
+        .from('category_requests')
+        .select('id, name, status, admin_feedback')
+        .eq('requested_by', user.id)
+        .order('created_at', { ascending: false })
+      setMyRequests((reqData || []) as typeof myRequests)
+      setTimeout(() => {
+        setCatRequestModal(false)
+        setCatReqSuccess(false)
+      }, 1500)
+    } catch (err) {
+      setCatReqError(err instanceof Error ? err.message : 'Failed to submit request')
+    } finally {
+      setCatReqSaving(false)
+    }
   }
 
   if (profile.role === 'admin') {
@@ -617,6 +672,110 @@ export function Dashboard() {
           </div>
         )}
       </section>
+
+      {/* Request New Category */}
+      <section>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Category Requests</h2>
+          <Button
+            size="sm"
+            variant="outline"
+            icon={<FolderPlus className="size-4" />}
+            onClick={() => {
+              setCatRequestModal(true)
+              setCatReqName('')
+              setCatReqDescription('')
+              setCatReqError(null)
+              setCatReqSuccess(false)
+            }}
+          >
+            Request New Category
+          </Button>
+        </div>
+        {myRequests.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            Don't see your service category? Request a new one and our admin team will review it.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {myRequests.map((req) => (
+              <Card key={req.id} padding="sm">
+                <div className="flex items-center justify-between gap-3 px-3 py-2">
+                  <span className="font-medium text-gray-900">{req.name}</span>
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={
+                        req.status === 'approved'
+                          ? 'success'
+                          : req.status === 'declined'
+                            ? 'danger'
+                            : 'warning'
+                      }
+                    >
+                      {req.status === 'approved' ? 'Approved' : req.status === 'declined' ? 'Declined' : 'Pending'}
+                    </Badge>
+                  </div>
+                </div>
+                {req.admin_feedback && (
+                  <p className="px-3 pb-2 text-sm text-gray-500">
+                    Feedback: {req.admin_feedback}
+                  </p>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Category Request Modal */}
+      <Modal
+        isOpen={catRequestModal}
+        onClose={() => setCatRequestModal(false)}
+        title="Request New Category"
+        size="md"
+      >
+        <div className="space-y-4">
+          {catReqSuccess ? (
+            <div className="rounded-lg border border-success-200 bg-success-50 p-4 text-center text-success-700">
+              Request submitted! Our admin team will review it shortly.
+            </div>
+          ) : (
+            <>
+              {catReqError && (
+                <div className="rounded-lg border border-danger-200 bg-danger-50 p-3 text-sm text-danger-700">
+                  {catReqError}
+                </div>
+              )}
+              <Input
+                label="Category Name"
+                value={catReqName}
+                onChange={(e) => setCatReqName(e.target.value)}
+                placeholder="e.g. Solar Panel Installation"
+                required
+              />
+              <Textarea
+                label="Description (optional)"
+                value={catReqDescription}
+                onChange={(e) => setCatReqDescription(e.target.value)}
+                placeholder="Describe the types of services in this category..."
+                rows={3}
+              />
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setCatRequestModal(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  icon={<Send className="size-4" />}
+                  onClick={handleSubmitCategoryRequest}
+                  loading={catReqSaving}
+                >
+                  Submit Request
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -158,9 +158,12 @@ CREATE TABLE public.payments (
   booking_id UUID NOT NULL UNIQUE REFERENCES public.bookings(id) ON DELETE CASCADE,
   amount DECIMAL(10, 2) NOT NULL,
   method TEXT CHECK (method IN ('orange_money', 'btc_myzaka', 'mascom_myzaka')),
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'completed', 'failed')),
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'held', 'released', 'refunded', 'failed', 'disputed')),
   transaction_ref TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  customer_confirmed BOOLEAN DEFAULT FALSE,
+  provider_confirmed BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- reviews
@@ -172,6 +175,20 @@ CREATE TABLE public.reviews (
   rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
   comment TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- category_requests (providers can request new categories)
+CREATE TABLE public.category_requests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  requested_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  icon TEXT,
+  description TEXT,
+  status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined')),
+  admin_feedback TEXT,
+  reviewed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- notifications
@@ -244,6 +261,10 @@ CREATE INDEX idx_payments_status ON public.payments(status);
 -- reviews
 CREATE INDEX idx_reviews_booking_id ON public.reviews(booking_id);
 CREATE INDEX idx_reviews_provider_id ON public.reviews(provider_id);
+
+-- category_requests
+CREATE INDEX idx_category_requests_requested_by ON public.category_requests(requested_by);
+CREATE INDEX idx_category_requests_status ON public.category_requests(status);
 
 -- notifications
 CREATE INDEX idx_notifications_user_id ON public.notifications(user_id);
@@ -337,6 +358,14 @@ CREATE TRIGGER set_bookings_updated_at
   BEFORE UPDATE ON public.bookings
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER set_category_requests_updated_at
+  BEFORE UPDATE ON public.category_requests
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER set_payments_updated_at
+  BEFORE UPDATE ON public.payments
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- Auto-create profile on auth.users insert
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -355,6 +384,7 @@ CREATE TRIGGER on_review_delete
 -- ROW LEVEL SECURITY (RLS)
 -- =============================================================================
 
+ALTER TABLE public.category_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_providers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_categories ENABLE ROW LEVEL SECURITY;
@@ -550,6 +580,53 @@ CREATE POLICY "notifications_update_owner" ON public.notifications
 -- notifications: INSERT allowed for self (system notifications use service role)
 CREATE POLICY "notifications_insert_owner" ON public.notifications
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- service_categories: viewable by everyone, admin can INSERT/UPDATE/DELETE
+CREATE POLICY "service_categories_select_all" ON public.service_categories
+  FOR SELECT USING (true);
+
+CREATE POLICY "service_categories_insert_admin" ON public.service_categories
+  FOR INSERT WITH CHECK (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "service_categories_update_admin" ON public.service_categories
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "service_categories_delete_admin" ON public.service_categories
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- category_requests: viewable by requester and admins, providers can INSERT, admins can UPDATE
+CREATE POLICY "category_requests_select" ON public.category_requests
+  FOR SELECT USING (
+    requested_by = auth.uid()
+    OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "category_requests_insert_provider" ON public.category_requests
+  FOR INSERT WITH CHECK (
+    auth.uid() = requested_by
+    AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'provider')
+  );
+
+CREATE POLICY "category_requests_update_admin" ON public.category_requests
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- payments: allow UPDATE by booking parties (for confirming satisfaction)
+CREATE POLICY "payments_update_booking_parties" ON public.payments
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.bookings b
+      WHERE b.id = booking_id
+      AND (b.customer_id = auth.uid() OR EXISTS (SELECT 1 FROM public.service_providers WHERE id = b.provider_id AND profile_id = auth.uid()))
+    )
+  );
 
 -- =============================================================================
 -- SEED DATA: service_categories

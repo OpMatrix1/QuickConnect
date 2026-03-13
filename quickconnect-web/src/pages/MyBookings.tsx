@@ -20,8 +20,9 @@ import {
   formatDate,
   formatTime,
   BOOKING_STATUS_CONFIG,
+  PAYMENT_STATUS_CONFIG,
 } from '@/lib/utils'
-import type { Booking, BookingStatus, PaymentMethod } from '@/lib/types'
+import type { Booking, BookingStatus, PaymentMethod, PaymentStatus } from '@/lib/types'
 import { useAuth } from '@/context/AuthContext'
 import {
   Button,
@@ -46,7 +47,7 @@ interface BookingWithDetails extends Booking {
   profiles?: { full_name: string; avatar_url: string | null }
   services?: { title: string } | null
   looking_for_responses?: { looking_for_posts: { title: string } } | null
-  payments?: { id: string; status: string }[]
+  payments?: { id: string; status: PaymentStatus; customer_confirmed: boolean; provider_confirmed: boolean }[]
   reviews?: { id: string }[]
 }
 
@@ -128,7 +129,7 @@ export function MyBookings() {
             profiles!bookings_customer_id_fkey(full_name, avatar_url),
             services(title),
             looking_for_responses(looking_for_posts(title)),
-            payments(id, status),
+            payments(id, status, customer_confirmed, provider_confirmed),
             reviews(id)
           `
           )
@@ -149,7 +150,7 @@ export function MyBookings() {
             ),
             services(title),
             looking_for_responses(looking_for_posts(title)),
-            payments(id, status),
+            payments(id, status, customer_confirmed, provider_confirmed),
             reviews(id)
           `
           )
@@ -227,13 +228,62 @@ export function MyBookings() {
         booking_id: paymentModal.id,
         amount: paymentModal.agreed_price ?? 0,
         method: paymentMethod,
-        status: 'pending',
+        status: 'held',
       })
       if (error) throw error
       setPaymentModal(null)
       await fetchBookings()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process payment')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const confirmSatisfaction = async (bookingId: string) => {
+    if (!user) return
+    setActionLoading(bookingId)
+    try {
+      const booking = bookings.find((b) => b.id === bookingId)
+      const payment = booking?.payments?.[0]
+      if (!payment) return
+
+      const field = isProvider ? 'provider_confirmed' : 'customer_confirmed'
+      const otherField = isProvider ? 'customer_confirmed' : 'provider_confirmed'
+
+      const updates: Record<string, unknown> = { [field]: true }
+      if (payment[otherField as keyof typeof payment]) {
+        updates.status = 'released'
+      }
+
+      const { error } = await supabase
+        .from('payments')
+        .update(updates as any)
+        .eq('id', payment.id)
+      if (error) throw error
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to confirm')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const disputePayment = async (bookingId: string) => {
+    if (!user) return
+    setActionLoading(bookingId)
+    try {
+      const booking = bookings.find((b) => b.id === bookingId)
+      const payment = booking?.payments?.[0]
+      if (!payment) return
+      const { error } = await supabase
+        .from('payments')
+        .update({ status: 'disputed' } as any)
+        .eq('id', payment.id)
+      if (error) throw error
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to dispute')
     } finally {
       setActionLoading(null)
     }
@@ -498,10 +548,67 @@ export function MyBookings() {
                                 setPaymentModal(booking)
                               }}
                             >
-                              Make Payment
+                              Pay (Escrow)
                             </Button>
                           )}
                         </>
+                      )}
+
+                      {/* Escrow actions */}
+                      {hasPayment(booking) && booking.payments?.[0]?.status === 'held' && (
+                        <div className="flex w-full flex-col gap-2 border-t border-gray-200 pt-3">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="info">
+                              {PAYMENT_STATUS_CONFIG.held.label}
+                            </Badge>
+                            <span className="text-sm text-gray-500">
+                              {formatCurrency(booking.agreed_price ?? 0)} held in escrow
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-500">
+                            <span>Customer: {booking.payments[0].customer_confirmed ? 'Confirmed' : 'Pending'}</span>
+                            <span>&bull;</span>
+                            <span>Provider: {booking.payments[0].provider_confirmed ? 'Confirmed' : 'Pending'}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            {!(isProvider ? booking.payments[0].provider_confirmed : booking.payments[0].customer_confirmed) && (
+                              <Button
+                                size="sm"
+                                icon={<Check className="size-4" />}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  confirmSatisfaction(booking.id)
+                                }}
+                                loading={actionLoading === booking.id}
+                              >
+                                Confirm Satisfied
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-danger-600 hover:bg-danger-50"
+                              icon={<AlertCircle className="size-4" />}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                disputePayment(booking.id)
+                              }}
+                              loading={actionLoading === booking.id}
+                            >
+                              Dispute
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {hasPayment(booking) && booking.payments?.[0]?.status === 'released' && (
+                        <Badge variant="success">Payment Released</Badge>
+                      )}
+                      {hasPayment(booking) && booking.payments?.[0]?.status === 'disputed' && (
+                        <Badge variant="danger">Payment Disputed — Admin Reviewing</Badge>
+                      )}
+                      {hasPayment(booking) && booking.payments?.[0]?.status === 'refunded' && (
+                        <Badge variant="warning">Payment Refunded</Badge>
                       )}
 
                       {/* Cancel (before in_progress) */}
@@ -611,7 +718,7 @@ export function MyBookings() {
       <Modal
         isOpen={!!paymentModal}
         onClose={() => setPaymentModal(null)}
-        title="Make Payment"
+        title="Secure Escrow Payment"
         size="md"
       >
         {paymentModal && (
@@ -619,6 +726,9 @@ export function MyBookings() {
             <p className="text-lg font-semibold text-gray-900">
               {formatCurrency(paymentModal.agreed_price ?? 0)}
             </p>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+              <strong>How escrow works:</strong> Your payment is held securely by QuickConnect until both you and the provider confirm satisfaction. Once both parties confirm, the funds are released to the provider.
+            </div>
             <Select
               label="Payment Method"
               options={PAYMENT_METHODS.map((p) => ({
@@ -630,9 +740,6 @@ export function MyBookings() {
                 setPaymentMethod(e.target.value as PaymentMethod)
               }
             />
-            <p className="text-sm text-gray-500">
-              You will be redirected to complete the payment securely.
-            </p>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setPaymentModal(null)}>
                 Cancel
@@ -641,7 +748,7 @@ export function MyBookings() {
                 onClick={submitPayment}
                 loading={actionLoading === paymentModal.id}
               >
-                Proceed to Pay
+                Pay &amp; Hold in Escrow
               </Button>
             </div>
           </div>

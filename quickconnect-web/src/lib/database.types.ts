@@ -541,26 +541,34 @@ export type Database = {
           booking_id: string
           amount: number
           method: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
-          status: 'pending' | 'completed' | 'failed'
+          status: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref: string | null
+          customer_confirmed: boolean
+          provider_confirmed: boolean
           created_at: string
+          updated_at: string
         }
         Insert: {
           id?: string
           booking_id: string
           amount: number
           method: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
-          status?: 'pending' | 'completed' | 'failed'
+          status?: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref?: string | null
+          customer_confirmed?: boolean
+          provider_confirmed?: boolean
           created_at?: string
+          updated_at?: string
         }
         Update: {
           id?: string
           booking_id?: string
           amount?: number
           method?: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
-          status?: 'pending' | 'completed' | 'failed'
+          status?: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref?: string | null
+          customer_confirmed?: boolean
+          provider_confirmed?: boolean
         }
         Relationships: [
           {
@@ -619,6 +627,58 @@ export type Database = {
             columns: ["provider_id"]
             isOneToOne: false
             referencedRelation: "service_providers"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      category_requests: {
+        Row: {
+          id: string
+          requested_by: string
+          name: string
+          icon: string | null
+          description: string | null
+          status: 'pending' | 'approved' | 'declined'
+          admin_feedback: string | null
+          reviewed_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          requested_by: string
+          name: string
+          icon?: string | null
+          description?: string | null
+          status?: 'pending' | 'approved' | 'declined'
+          admin_feedback?: string | null
+          reviewed_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          requested_by?: string
+          name?: string
+          icon?: string | null
+          description?: string | null
+          status?: 'pending' | 'approved' | 'declined'
+          admin_feedback?: string | null
+          reviewed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "category_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "category_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           }
         ]
