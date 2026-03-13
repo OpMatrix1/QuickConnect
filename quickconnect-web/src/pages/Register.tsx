@@ -44,7 +44,7 @@ export function Register() {
 
     setSubmitting(true)
     try {
-      const { error: signUpError } = await signUp(email, password, fullName, role)
+      const { error: signUpError } = await signUp(email, password, fullName, role, businessName || undefined)
       if (signUpError) {
         setError(signUpError)
         return

@@ -283,16 +283,29 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to auto-create profile on auth.users insert
+-- Function to auto-create profile (and service_providers row for providers) on auth.users insert
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  v_role TEXT;
 BEGIN
+  v_role := COALESCE(NEW.raw_user_meta_data->>'role', 'customer');
+
   INSERT INTO public.profiles (id, full_name, role)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email, 'User'),
-    COALESCE(NEW.raw_user_meta_data->>'role', 'customer')
+    v_role
   );
+
+  IF v_role = 'provider' THEN
+    INSERT INTO public.service_providers (profile_id, business_name)
+    VALUES (
+      NEW.id,
+      COALESCE(NULLIF(NEW.raw_user_meta_data->>'business_name', ''), NEW.raw_user_meta_data->>'full_name', 'My Business')
+    );
+  END IF;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

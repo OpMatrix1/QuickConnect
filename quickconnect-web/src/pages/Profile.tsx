@@ -84,11 +84,21 @@ export function Profile() {
     async function fetchProviderData() {
       setLoadingProvider(true)
       try {
-        const { data: providerData } = await supabase
+        let { data: providerData } = await supabase
           .from('service_providers')
           .select('*')
           .eq('profile_id', user!.id)
           .single()
+
+        // Auto-create the service_providers row if it doesn't exist yet
+        if (!providerData) {
+          const { data: created } = await supabase
+            .from('service_providers')
+            .insert({ profile_id: user!.id, business_name: profile?.full_name || 'My Business' } as never)
+            .select()
+            .single()
+          providerData = created
+        }
 
         const providerRow = providerData as ServiceProvider | null
         if (providerRow) {
@@ -137,9 +147,22 @@ export function Profile() {
       })
       if (profileError) throw new Error(profileError)
 
-      if (profile.role === 'provider' && provider) {
-        const { error: providerError } = await supabase.from('service_providers').update({ business_name: businessName.trim(), description: businessDescription.trim() || null } as never).eq('id', provider.id)
-        if (providerError) throw new Error(providerError.message)
+      if (profile.role === 'provider') {
+        if (provider) {
+          const { error: providerError } = await supabase
+            .from('service_providers')
+            .update({ business_name: businessName.trim(), description: businessDescription.trim() || null } as never)
+            .eq('id', provider.id)
+          if (providerError) throw new Error(providerError.message)
+        } else {
+          const { data: newProvider, error: providerError } = await supabase
+            .from('service_providers')
+            .insert({ profile_id: user.id, business_name: businessName.trim() || profile.full_name || 'My Business', description: businessDescription.trim() || null } as never)
+            .select()
+            .single()
+          if (providerError) throw new Error(providerError.message)
+          setProvider(newProvider as ServiceProvider)
+        }
       }
 
       await refreshProfile()

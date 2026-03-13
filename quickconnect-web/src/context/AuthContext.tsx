@@ -11,7 +11,7 @@ interface AuthState {
 }
 
 interface AuthContextType extends AuthState {
-  signUp: (email: string, password: string, fullName: string, role: 'customer' | 'provider') => Promise<{ error: string | null }>
+  signUp: (email: string, password: string, fullName: string, role: 'customer' | 'provider', businessName?: string) => Promise<{ error: string | null }>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: ProfileUpdate) => Promise<{ error: string | null }>
@@ -94,13 +94,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [fetchProfile])
 
-  const signUp = async (email: string, password: string, fullName: string, role: 'customer' | 'provider') => {
+  const signUp = async (email: string, password: string, fullName: string, role: 'customer' | 'provider', businessName?: string) => {
     try {
       const { error } = await withTimeout(
         supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName, role } },
+          options: { data: { full_name: fullName, role, business_name: businessName || null } },
         })
       )
       if (error) return { error: error.message }
