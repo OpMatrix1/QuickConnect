@@ -38,6 +38,7 @@ interface CategoryRequestWithProfile {
   admin_feedback: string | null
   created_at: string
   profiles: { full_name: string }
+  provider_id?: string | null
 }
 
 type Tab = 'categories' | 'requests'
@@ -80,7 +81,21 @@ export function AdminCategories() {
         supabase
           .from('category_requests')
           .select('*, profiles!category_requests_requested_by_fkey(full_name)')
-          .order('created_at', { ascending: false }),
+          .order('created_at', { ascending: false })
+          .then(async (res) => {
+            if (res.error || !res.data) return res
+            const requestsWithProvider = await Promise.all(
+              res.data.map(async (r: Record<string, unknown>) => {
+                const { data: sp } = await supabase
+                  .from('service_providers')
+                  .select('id')
+                  .eq('profile_id', r.requested_by as string)
+                  .maybeSingle()
+                return { ...r, provider_id: (sp as { id: string } | null)?.id ?? null }
+              })
+            )
+            return { ...res, data: requestsWithProvider }
+          }),
       ])
 
       if (catRes.error) throw catRes.error
@@ -196,12 +211,27 @@ export function AdminCategories() {
       if (updateError) throw updateError
 
       if (action === 'approve') {
-        const { error: insertError } = await supabase.from('service_categories').insert({
-          name: reviewModal.name,
-          icon: reviewModal.icon || null,
-          description: reviewModal.description || null,
-        } as any)
+        const { data: newCat, error: insertError } = await supabase
+          .from('service_categories')
+          .insert({
+            name: reviewModal.name,
+            icon: reviewModal.icon || null,
+            description: reviewModal.description || null,
+          } as any)
+          .select()
+          .single()
         if (insertError) throw insertError
+
+        if (newCat && reviewModal.provider_id) {
+          const cat = newCat as { id: string; name: string }
+          await supabase.from('services').insert({
+            provider_id: reviewModal.provider_id,
+            category_id: cat.id,
+            title: `${cat.name} Service`,
+            price_type: 'quote',
+            is_active: true,
+          } as never)
+        }
       }
 
       await supabase.from('notifications').insert({
@@ -210,7 +240,7 @@ export function AdminCategories() {
         title: action === 'approve' ? 'Category request approved!' : 'Category request declined',
         body:
           action === 'approve'
-            ? `Your requested category "${reviewModal.name}" has been added to QuickConnect.`
+            ? `Your requested category "${reviewModal.name}" has been approved and you've been automatically listed under it.`
             : `Your category request "${reviewModal.name}" was declined.${feedbackText.trim() ? ` Feedback: ${feedbackText.trim()}` : ''}`,
         data: { category_request_id: reviewModal.id },
       } as any)

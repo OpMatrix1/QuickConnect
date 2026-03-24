@@ -500,7 +500,7 @@ export function Profile() {
             providerId={provider?.id ?? ''}
             service={editingService}
             categories={categories}
-            onSaved={(s) => {
+            onSaved={async (s) => {
               const service = s as Service
               const cat = categories.find((c) => c.id === service.category_id)
               const withCat = { ...service, service_categories: cat ? { ...cat } : null } as ServiceWithCategory
@@ -510,6 +510,15 @@ export function Profile() {
                 )
               } else {
                 setServices((prev) => [withCat, ...prev])
+                if (user && cat) {
+                  await supabase.from('notifications').insert({
+                    user_id: user.id,
+                    type: 'service_linked',
+                    title: 'Now listed in a new category',
+                    body: `You're now listed under "${cat.name}". Customers in that category will be able to find you.`,
+                    data: { service_id: service.id, category_id: cat.id },
+                  } as never)
+                }
               }
               setServiceModalOpen(false)
               setEditingService(null)

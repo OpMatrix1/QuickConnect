@@ -10,7 +10,7 @@ import {
   X,
   Play,
   Star,
-  CreditCard,
+  Wallet,
   MessageCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -22,7 +22,7 @@ import {
   BOOKING_STATUS_CONFIG,
   PAYMENT_STATUS_CONFIG,
 } from '@/lib/utils'
-import type { Booking, BookingStatus, PaymentMethod, PaymentStatus } from '@/lib/types'
+import type { Booking, BookingStatus, PaymentStatus } from '@/lib/types'
 import { useAuth } from '@/context/AuthContext'
 import {
   Button,
@@ -31,7 +31,6 @@ import {
   Avatar,
   Spinner,
   EmptyState,
-  Select,
   Textarea,
   Modal,
   StarRating,
@@ -60,11 +59,6 @@ const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: 'cancelled', label: 'Cancelled' },
 ]
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'orange_money', label: 'Orange Money' },
-  { value: 'btc_myzaka', label: 'BTC MyZaka' },
-  { value: 'mascom_myzaka', label: 'Mascom MyZaka' },
-]
 
 function getBookingTitle(b: BookingWithDetails): string {
   if (b.services?.title) return b.services.title
@@ -100,7 +94,7 @@ export function MyBookings() {
   const [paymentModal, setPaymentModal] = useState<BookingWithDetails | null>(null)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('orange_money')
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
   const isProvider = profile?.role === 'provider'
 
   const fetchBookings = useCallback(async () => {
@@ -220,15 +214,28 @@ export function MyBookings() {
     }
   }
 
+  const fetchWalletBalance = async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('wallets')
+      .select('balance')
+      .eq('user_id', user.id)
+      .single()
+    setWalletBalance((data as { balance: number } | null)?.balance ?? null)
+  }
+
+  const openPaymentModal = async (booking: BookingWithDetails) => {
+    setPaymentModal(booking)
+    await fetchWalletBalance()
+  }
+
   const submitPayment = async () => {
     if (!paymentModal || !user) return
     setActionLoading(paymentModal.id)
     try {
-      const { error } = await supabase.from('payments').insert({
-        booking_id: paymentModal.id,
-        amount: paymentModal.agreed_price ?? 0,
-        method: paymentMethod,
-        status: 'held',
+      const { error } = await supabase.rpc('initiate_wallet_payment', {
+        p_booking_id: paymentModal.id,
+        p_amount: paymentModal.agreed_price ?? 0,
       })
       if (error) throw error
       setPaymentModal(null)
@@ -249,16 +256,10 @@ export function MyBookings() {
       if (!payment) return
 
       const field = isProvider ? 'provider_confirmed' : 'customer_confirmed'
-      const otherField = isProvider ? 'customer_confirmed' : 'provider_confirmed'
-
-      const updates: Record<string, unknown> = { [field]: true }
-      if (payment[otherField as keyof typeof payment]) {
-        updates.status = 'released'
-      }
 
       const { error } = await supabase
         .from('payments')
-        .update(updates as any)
+        .update({ [field]: true } as any)
         .eq('id', payment.id)
       if (error) throw error
       await fetchBookings()
@@ -542,13 +543,13 @@ export function MyBookings() {
                             <Button
                               size="sm"
                               variant="outline"
-                              icon={<CreditCard className="size-4" />}
+                              icon={<Wallet className="size-4" />}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setPaymentModal(booking)
+                                openPaymentModal(booking)
                               }}
                             >
-                              Pay (Escrow)
+                              Pay from Wallet
                             </Button>
                           )}
                         </>
@@ -718,28 +719,42 @@ export function MyBookings() {
       <Modal
         isOpen={!!paymentModal}
         onClose={() => setPaymentModal(null)}
-        title="Secure Escrow Payment"
+        title="Pay from Wallet"
         size="md"
       >
         {paymentModal && (
           <div className="space-y-4">
-            <p className="text-lg font-semibold text-gray-900">
-              {formatCurrency(paymentModal.agreed_price ?? 0)}
-            </p>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-              <strong>How escrow works:</strong> Your payment is held securely by QuickConnect until both you and the provider confirm satisfaction. Once both parties confirm, the funds are released to the provider.
+            <div className="flex items-center justify-between rounded-lg bg-gray-50 p-4">
+              <div>
+                <p className="text-sm text-gray-500">Amount to pay</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(paymentModal.agreed_price ?? 0)}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Your wallet balance</p>
+                <p className={`text-lg font-semibold ${
+                  walletBalance !== null && walletBalance < (paymentModal.agreed_price ?? 0)
+                    ? 'text-danger-600'
+                    : 'text-success-600'
+                }`}>
+                  {walletBalance !== null ? formatCurrency(walletBalance) : '—'}
+                </p>
+              </div>
             </div>
-            <Select
-              label="Payment Method"
-              options={PAYMENT_METHODS.map((p) => ({
-                value: p.value,
-                label: p.label,
-              }))}
-              value={paymentMethod}
-              onChange={(e) =>
-                setPaymentMethod(e.target.value as PaymentMethod)
-              }
-            />
+
+            {walletBalance !== null && walletBalance < (paymentModal.agreed_price ?? 0) && (
+              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">
+                <strong>Insufficient balance.</strong> You need{' '}
+                {formatCurrency((paymentModal.agreed_price ?? 0) - walletBalance)} more.{' '}
+                <a href={ROUTES.WALLET} className="underline font-medium">Top up your wallet</a> first.
+              </div>
+            )}
+
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+              <strong>Escrow protection:</strong> The amount is deducted from your wallet and held securely. Once both you and the provider confirm satisfaction, it's released to the provider.
+            </div>
+
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setPaymentModal(null)}>
                 Cancel
@@ -747,8 +762,13 @@ export function MyBookings() {
               <Button
                 onClick={submitPayment}
                 loading={actionLoading === paymentModal.id}
+                disabled={
+                  walletBalance !== null &&
+                  walletBalance < (paymentModal.agreed_price ?? 0)
+                }
+                icon={<Wallet className="size-4" />}
               >
-                Pay &amp; Hold in Escrow
+                Confirm Payment
               </Button>
             </div>
           </div>

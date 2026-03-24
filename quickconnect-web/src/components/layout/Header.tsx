@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Search } from 'lucide-react'
+import { Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Search, Wallet } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
 import { useAuth } from '@/context/AuthContext'
@@ -168,6 +168,14 @@ export function Header() {
                       <User className="size-4 text-gray-400" />
                       Profile
                     </Link>
+                    <Link
+                      to={ROUTES.WALLET}
+                      onClick={() => setDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Wallet className="size-4 text-gray-400" />
+                      My Wallet
+                    </Link>
                     {profile?.role === 'admin' && (
                       <Link
                         to={ROUTES.ADMIN}
@@ -309,6 +317,13 @@ export function Header() {
                 className="rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
               >
                 Profile
+              </Link>
+              <Link
+                to={ROUTES.WALLET}
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                My Wallet
               </Link>
               {profile?.role === 'admin' && (
                 <Link

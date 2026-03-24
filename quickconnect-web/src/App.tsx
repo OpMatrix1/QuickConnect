@@ -18,6 +18,7 @@ import { ProviderSearch } from '@/pages/ProviderSearch'
 import { ProviderProfile } from '@/pages/ProviderProfile'
 import { MyBookings } from '@/pages/MyBookings'
 import { Chat } from '@/pages/Chat'
+import { WalletPage } from '@/pages/Wallet'
 import { ROUTES } from '@/lib/constants'
 
 function App() {
@@ -39,6 +40,7 @@ function App() {
               <Route path={ROUTES.CHAT} element={<Chat />} />
               <Route path={ROUTES.CHAT_CONVERSATION} element={<Chat />} />
               <Route path={ROUTES.PROFILE} element={<Profile />} />
+              <Route path={ROUTES.WALLET} element={<WalletPage />} />
               <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
               <Route path={ROUTES.ADMIN} element={<AdminDashboard />} />
               <Route path={ROUTES.ADMIN_USERS} element={<AdminUsers />} />

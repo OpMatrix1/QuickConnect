@@ -7,6 +7,9 @@ import {
   Star,
   BarChart3,
   Filter,
+  AlertTriangle,
+  Check,
+  RotateCcw,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -20,12 +23,30 @@ import {
   CardContent,
   Spinner,
   EmptyState,
+  Badge,
+  Button,
 } from '@/components/ui'
 
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
   orange_money: 'Orange Money',
   btc_myzaka: 'BTC MyZaka',
   mascom_myzaka: 'Mascom MyZaka',
+  wallet: 'Wallet',
+}
+
+interface DisputedPayment {
+  id: string
+  amount: number
+  status: string
+  created_at: string
+  booking_id: string
+  bookings: {
+    customer_id: string
+    profiles: { full_name: string } | null
+    service_providers: {
+      profiles: { full_name: string } | null
+    } | null
+  } | null
 }
 
 export function AdminReports() {
@@ -58,6 +79,42 @@ export function AdminReports() {
   const [categoryPopularity, setCategoryPopularity] = useState<
     { name: string; posts: number; bookings: number }[]
   >([])
+  const [disputedPayments, setDisputedPayments] = useState<DisputedPayment[]>([])
+  const [disputeActionLoading, setDisputeActionLoading] = useState<string | null>(null)
+  const [disputeError, setDisputeError] = useState<string | null>(null)
+
+  const fetchDisputedPayments = async () => {
+    const { data } = await supabase
+      .from('payments')
+      .select(`
+        id, amount, status, created_at, booking_id,
+        bookings(
+          customer_id,
+          profiles!bookings_customer_id_fkey(full_name),
+          service_providers!bookings_provider_id_fkey(
+            profiles!service_providers_profile_id_fkey(full_name)
+          )
+        )
+      `)
+      .in('status', ['disputed', 'held'])
+      .order('created_at', { ascending: false })
+    setDisputedPayments((data ?? []) as unknown as DisputedPayment[])
+  }
+
+  const handleDisputeAction = async (paymentId: string, action: 'refund' | 'release') => {
+    setDisputeActionLoading(paymentId + action)
+    setDisputeError(null)
+    try {
+      const fn = action === 'refund' ? 'admin_refund_payment' : 'admin_release_payment'
+      const { error } = await supabase.rpc(fn, { p_payment_id: paymentId })
+      if (error) throw error
+      await fetchDisputedPayments()
+    } catch (err) {
+      setDisputeError(err instanceof Error ? err.message : 'Action failed')
+    } finally {
+      setDisputeActionLoading(null)
+    }
+  }
 
   useEffect(() => {
     if (!user || !profile) {
@@ -227,6 +284,7 @@ export function AdminReports() {
     }
 
     fetchData()
+    fetchDisputedPayments()
   }, [user?.id, profile?.role, dateFrom, dateTo])
 
   if (authLoading) {
@@ -475,6 +533,85 @@ export function AdminReports() {
                     </div>
                   </li>
                 ))}
+            </ul>
+          </Card>
+        )}
+      </section>
+
+      {/* Disputed & Held Payments */}
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <AlertTriangle className="size-5 text-warning-500" />
+          Payments Requiring Attention
+        </h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Disputed payments and held payments awaiting confirmation. You can refund the customer or release funds to the provider.
+        </p>
+
+        {disputeError && (
+          <div className="mb-4 rounded-lg bg-danger-50 p-3 text-sm text-danger-700">
+            {disputeError}
+          </div>
+        )}
+
+        {disputedPayments.length === 0 ? (
+          <EmptyState
+            icon={<Check className="size-10 text-success-500" />}
+            title="No payments need attention"
+            description="All payments are resolved."
+          />
+        ) : (
+          <Card padding="none">
+            <ul className="divide-y divide-gray-100">
+              {disputedPayments.map((p) => {
+                const customerName =
+                  (p.bookings?.profiles as { full_name: string } | null)?.full_name ?? 'Customer'
+                const providerName =
+                  (p.bookings?.service_providers?.profiles as { full_name: string } | null)
+                    ?.full_name ?? 'Provider'
+                return (
+                  <li key={p.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant={p.status === 'disputed' ? 'danger' : 'warning'}>
+                          {p.status === 'disputed' ? 'Disputed' : 'Held'}
+                        </Badge>
+                        <span className="text-base font-semibold text-gray-900">
+                          {formatCurrency(p.amount)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        Customer: <strong>{customerName}</strong> &rarr; Provider: <strong>{providerName}</strong>
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(p.created_at).toLocaleDateString('en-BW', {
+                          day: 'numeric', month: 'short', year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        icon={<RotateCcw className="size-4" />}
+                        loading={disputeActionLoading === p.id + 'refund'}
+                        onClick={() => handleDisputeAction(p.id, 'refund')}
+                        className="text-danger-600 border-danger-300 hover:bg-danger-50"
+                      >
+                        Refund Customer
+                      </Button>
+                      <Button
+                        size="sm"
+                        icon={<Check className="size-4" />}
+                        loading={disputeActionLoading === p.id + 'release'}
+                        onClick={() => handleDisputeAction(p.id, 'release')}
+                      >
+                        Release to Provider
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           </Card>
         )}

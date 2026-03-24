@@ -32,6 +32,9 @@ export type MessageInsert = Database['public']['Tables']['messages']['Insert']
 export type Payment = Database['public']['Tables']['payments']['Row']
 export type PaymentInsert = Database['public']['Tables']['payments']['Insert']
 
+export type Wallet = Database['public']['Tables']['wallets']['Row']
+export type WalletTransaction = Database['public']['Tables']['wallet_transactions']['Row']
+
 export type Review = Database['public']['Tables']['reviews']['Row']
 export type ReviewInsert = Database['public']['Tables']['reviews']['Insert']
 
@@ -43,8 +46,10 @@ export type CategoryRequestInsert = Database['public']['Tables']['category_reque
 export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 export type PostStatus = 'active' | 'matched' | 'expired' | 'cancelled'
 export type Urgency = 'low' | 'medium' | 'high' | 'emergency'
-export type PaymentMethod = 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
+export type PaymentMethod = 'orange_money' | 'btc_myzaka' | 'mascom_myzaka' | 'wallet'
 export type PaymentStatus = 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
+export type WalletTransactionType = 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+export type WalletTransactionDirection = 'credit' | 'debit'
 export type CategoryRequestStatus = 'pending' | 'approved' | 'declined'
 export type PriceType = 'fixed' | 'hourly' | 'quote'
 export type UserRole = 'customer' | 'provider' | 'admin'

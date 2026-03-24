@@ -540,7 +540,7 @@ export type Database = {
           id: string
           booking_id: string
           amount: number
-          method: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
+          method: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka' | 'wallet' | null
           status: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref: string | null
           customer_confirmed: boolean
@@ -552,7 +552,7 @@ export type Database = {
           id?: string
           booking_id: string
           amount: number
-          method: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
+          method?: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka' | 'wallet' | null
           status?: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref?: string | null
           customer_confirmed?: boolean
@@ -564,7 +564,7 @@ export type Database = {
           id?: string
           booking_id?: string
           amount?: number
-          method?: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka'
+          method?: 'orange_money' | 'btc_myzaka' | 'mascom_myzaka' | 'wallet' | null
           status?: 'pending' | 'held' | 'released' | 'refunded' | 'failed' | 'disputed'
           transaction_ref?: string | null
           customer_confirmed?: boolean
@@ -719,6 +719,77 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      wallets: {
+        Row: {
+          id: string
+          user_id: string
+          balance: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          balance?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          balance?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wallets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      wallet_transactions: {
+        Row: {
+          id: string
+          wallet_id: string
+          type: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          direction: 'credit' | 'debit'
+          amount: number
+          reference_id: string | null
+          description: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          wallet_id: string
+          type: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          direction: 'credit' | 'debit'
+          amount: number
+          reference_id?: string | null
+          description?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          wallet_id?: string
+          type?: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          direction?: 'credit' | 'debit'
+          amount?: number
+          reference_id?: string | null
+          description?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wallet_transactions_wallet_id_fkey"
+            columns: ["wallet_id"]
+            isOneToOne: false
+            referencedRelation: "wallets"
             referencedColumns: ["id"]
           }
         ]
