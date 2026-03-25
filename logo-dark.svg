@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Full-bleed black background for dark mode -->
+  <rect width="512" height="512" fill="#000000"/>
+  <!-- White QC text centered -->
+  <text
+    x="256"
+    y="310"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="Arial Black, Arial, sans-serif"
+    font-weight="900"
+    font-size="220"
+    fill="#FFFFFF"
+    letter-spacing="-6"
+  >QC</text>
+</svg>
