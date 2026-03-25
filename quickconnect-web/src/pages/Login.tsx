@@ -47,13 +47,13 @@ export function Login() {
         <div className="mx-auto w-full max-w-md">
           <Link
             to={ROUTES.HOME}
-            className="inline-flex items-center gap-2 text-2xl font-bold text-primary-600"
+            className="animate-fade-up inline-flex items-center gap-2 text-2xl font-bold text-primary-600"
           >
             <span className="bg-primary-500 px-2 py-0.5 text-white rounded">QC</span>
             {APP_NAME}
           </Link>
 
-          <div className="mt-10">
+          <div className="animate-fade-up mt-10" style={{ animationDelay: '80ms' }}>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
               Welcome back
             </h1>
@@ -62,7 +62,7 @@ export function Login() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+          <form onSubmit={handleSubmit} className="animate-fade-up mt-8 space-y-6" style={{ animationDelay: '160ms' }}>
             {successMessage && (
               <div className="rounded-lg bg-success-50 p-4 text-sm text-success-600">
                 {successMessage}
@@ -156,7 +156,7 @@ export function Login() {
       </div>
 
       {/* Decorative right panel - desktop */}
-      <div className="hidden lg:block lg:flex-1">
+      <div className="animate-fade-in hidden lg:block lg:flex-1" style={{ animationDelay: '200ms' }}>
         <div className="relative h-full min-h-[500px] overflow-hidden rounded-l-3xl bg-gradient-to-br from-primary-500 via-primary-600 to-accent-600">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.08\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-40" />
           <div className="absolute inset-0 flex flex-col justify-end p-12">

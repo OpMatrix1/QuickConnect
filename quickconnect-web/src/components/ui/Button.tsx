@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger'
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'white'
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
   disabled?: boolean
@@ -22,6 +22,8 @@ const variantStyles = {
     'bg-transparent text-gray-700 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-gray-300 focus-visible:ring-offset-2 active:bg-gray-200',
   danger:
     'bg-danger-500 text-white shadow-sm hover:bg-danger-600 focus-visible:ring-2 focus-visible:ring-danger-500 focus-visible:ring-offset-2 active:bg-danger-700',
+  white:
+    'bg-white text-primary-700 hover:bg-primary-50 focus-visible:ring-2 focus-visible:ring-white/60 active:bg-primary-100',
 }
 
 const sizeStyles = {

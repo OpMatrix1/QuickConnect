@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
+import { Reveal } from '@/components/ui/Reveal'
 import {
   FileText,
   Users,
@@ -350,39 +351,45 @@ export function Dashboard() {
         </section>
 
         <section className="grid gap-4 sm:grid-cols-3">
-          <Card padding="md">
-            <CardContent className="flex items-center gap-4">
-              <span className="flex size-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
-                <FileText className="size-6" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{activePostsCount}</p>
-                <p className="text-sm text-gray-600">Active Posts</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card padding="md">
-            <CardContent className="flex items-center gap-4">
-              <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
-                <CalendarCheck className="size-6" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{pendingBookingsCount}</p>
-                <p className="text-sm text-gray-600">Pending Bookings</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card padding="md">
-            <CardContent className="flex items-center gap-4">
-              <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
-                <TrendingUp className="size-6" />
-              </span>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{completedBookingsCount}</p>
-                <p className="text-sm text-gray-600">Completed Services</p>
-              </div>
-            </CardContent>
-          </Card>
+          <Reveal delay={0} animation="scale">
+            <Card padding="md" className="card-hover-lift">
+              <CardContent className="flex items-center gap-4">
+                <span className="flex size-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
+                  <FileText className="size-6" />
+                </span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{activePostsCount}</p>
+                  <p className="text-sm text-gray-600">Active Posts</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Reveal>
+          <Reveal delay={80} animation="scale">
+            <Card padding="md" className="card-hover-lift">
+              <CardContent className="flex items-center gap-4">
+                <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
+                  <CalendarCheck className="size-6" />
+                </span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{pendingBookingsCount}</p>
+                  <p className="text-sm text-gray-600">Pending Bookings</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Reveal>
+          <Reveal delay={160} animation="scale">
+            <Card padding="md" className="card-hover-lift">
+              <CardContent className="flex items-center gap-4">
+                <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
+                  <TrendingUp className="size-6" />
+                </span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{completedBookingsCount}</p>
+                  <p className="text-sm text-gray-600">Completed Services</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Reveal>
         </section>
 
         <section>
@@ -518,67 +525,27 @@ export function Dashboard() {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
-              <Star className="size-6" />
-            </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {providerData?.rating_avg?.toFixed(1) ?? '0.0'}
-              </p>
-              <p className="text-sm text-gray-600">Rating</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
-              <MessageSquare className="size-6" />
-            </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{opportunityPosts.length}</p>
-              <p className="text-sm text-gray-600">Active Opportunities</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
-              <CalendarCheck className="size-6" />
-            </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {providerBookings.filter((b) => ['pending', 'confirmed', 'in_progress'].includes(b.status)).length}
-              </p>
-              <p className="text-sm text-gray-600">Pending Bookings</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
-              <TrendingUp className="size-6" />
-            </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
-                {providerBookings.filter((b) => b.status === 'completed').length}
-              </p>
-              <p className="text-sm text-gray-600">Completed Jobs</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
-              <DollarSign className="size-6" />
-            </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{formatCurrency(earnings)}</p>
-              <p className="text-sm text-gray-600">Total Earnings</p>
-            </div>
-          </CardContent>
-        </Card>
+        {[
+          { icon: Star, bg: 'bg-warning-100', color: 'text-warning-600', value: providerData?.rating_avg?.toFixed(1) ?? '0.0', label: 'Rating' },
+          { icon: MessageSquare, bg: 'bg-primary-100', color: 'text-primary-600', value: opportunityPosts.length, label: 'Active Opportunities' },
+          { icon: CalendarCheck, bg: 'bg-warning-100', color: 'text-warning-600', value: providerBookings.filter((b) => ['pending', 'confirmed', 'in_progress'].includes(b.status)).length, label: 'Pending Bookings' },
+          { icon: TrendingUp, bg: 'bg-success-100', color: 'text-success-600', value: providerBookings.filter((b) => b.status === 'completed').length, label: 'Completed Jobs' },
+          { icon: DollarSign, bg: 'bg-success-100', color: 'text-success-600', value: formatCurrency(earnings), label: 'Total Earnings' },
+        ].map(({ icon: Icon, bg, color, value, label }, i) => (
+          <Reveal key={label} delay={i * 70} animation="scale">
+            <Card padding="md" className="card-hover-lift">
+              <CardContent className="flex items-center gap-4">
+                <span className={`flex size-12 items-center justify-center rounded-xl ${bg} ${color}`}>
+                  <Icon className="size-6" />
+                </span>
+                <div>
+                  <p className="text-2xl font-bold text-gray-900">{value}</p>
+                  <p className="text-sm text-gray-600">{label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Reveal>
+        ))}
       </section>
 
       <section>

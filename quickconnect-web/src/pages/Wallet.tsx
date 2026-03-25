@@ -221,13 +221,13 @@ export function WalletPage() {
               </div>
               <div className="mt-6">
                 <Button
+                  variant="white"
                   onClick={() => {
                     setTopUpAmount('')
                     setTopUpError(null)
                     setTopUpSuccess(null)
                     setTopUpModal(true)
                   }}
-                  className="bg-white text-primary-700 hover:bg-primary-50 font-semibold"
                   icon={<Plus className="size-4" />}
                 >
                   Add Money

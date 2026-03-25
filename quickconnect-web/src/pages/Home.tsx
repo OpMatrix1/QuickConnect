@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { Reveal } from '@/components/ui/Reveal'
 import {
   Wrench,
   Zap,
@@ -25,7 +26,6 @@ import {
   Star,
   CheckCircle,
   Users,
-  ThumbsUp,
   BadgeCheck,
   MessageCircle,
   ArrowRight,
@@ -100,39 +100,36 @@ export function Home() {
   }
 
   return (
-    <div className="bg-white">
+    <div>
 
       {/* ── HERO ─────────────────────────────────────────── */}
       <section
         className="relative flex flex-col items-center justify-center min-h-[560px] px-4 pt-10 pb-16 text-white overflow-hidden"
         style={{
-          background: 'linear-gradient(135deg, #0d3326 0%, #1a4a35 40%, #0f3d2e 70%, #0a2a1f 100%)',
+          background: 'linear-gradient(160deg, #0f2258 0%, #1a3a8f 100%)',
         }}
       >
-        {/* subtle texture dots */}
-        <div
-          className="absolute inset-0 opacity-[0.04]"
-          style={{
-            backgroundImage:
-              'radial-gradient(circle, #fff 1px, transparent 1px)',
-            backgroundSize: '28px 28px',
-          }}
-        />
 
         <div className="relative w-full max-w-3xl text-center">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight">
+          <h1
+            className="animate-fade-up text-4xl font-bold leading-tight tracking-tight sm:text-5xl lg:text-6xl"
+          >
             Find trusted local services
             <br />
             <span className="text-primary-400">anywhere in Botswana</span>
           </h1>
-          <p className="mt-4 text-lg text-white/70 max-w-xl mx-auto">
+          <p
+            className="animate-fade-up mt-4 max-w-xl mx-auto text-lg text-white/70"
+            style={{ animationDelay: '150ms' }}
+          >
             Post what you need. Get quotes from verified providers. Pick the best — all in one place.
           </p>
 
           {/* Search bar */}
           <form
             onSubmit={handleSearch}
-            className="mt-8 flex items-center bg-white rounded-full shadow-2xl overflow-hidden max-w-xl mx-auto"
+            className="animate-fade-up mt-8 flex items-center bg-white rounded-full shadow-2xl overflow-hidden max-w-xl mx-auto"
+            style={{ animationDelay: '300ms' }}
           >
             <div className="flex items-center gap-2 flex-1 px-5 py-1">
               <Search className="size-5 text-gray-400 shrink-0" />
@@ -146,20 +143,23 @@ export function Home() {
             </div>
             <button
               type="submit"
-              className="m-1.5 rounded-full bg-primary-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shrink-0"
+              className="press-feedback m-1.5 rounded-full bg-primary-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shrink-0"
             >
               Search
             </button>
           </form>
 
           {/* Popular tags */}
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <div
+            className="animate-fade-up mt-5 flex flex-wrap items-center justify-center gap-2"
+            style={{ animationDelay: '450ms' }}
+          >
             <span className="text-sm text-white/60">Popular:</span>
             {POPULAR_SEARCHES.map((tag) => (
               <button
                 key={tag}
                 onClick={() => navigate(`${ROUTES.PROVIDERS}?category=${encodeURIComponent(tag)}`)}
-                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white/85 hover:bg-white/20 transition-colors backdrop-blur-sm"
+                className="press-feedback rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs text-white/85 hover:bg-white/20 transition-colors backdrop-blur-sm"
               >
                 {tag}
               </button>
@@ -167,32 +167,11 @@ export function Home() {
           </div>
         </div>
 
-        {/* Floating trust pill */}
-        <div className="relative mt-10 flex items-center gap-3 rounded-full bg-white/10 border border-white/20 px-5 py-2.5 backdrop-blur-sm">
-          <div className="flex -space-x-2">
-            {['#1DBF73', '#19a463', '#158753'].map((c, i) => (
-              <span
-                key={i}
-                className="flex size-7 items-center justify-center rounded-full ring-2 ring-white/20 text-white text-xs font-bold"
-                style={{ background: c }}
-              >
-                {String.fromCharCode(65 + i)}
-              </span>
-            ))}
-          </div>
-          <div className="text-sm text-white/90">
-            <span className="font-semibold">500+ verified providers</span>
-            {' '}trusted by Batswana
-          </div>
-          <div className="flex items-center gap-0.5 text-yellow-400">
-            {[...Array(5)].map((_, i) => <Star key={i} className="size-3.5 fill-current" />)}
-          </div>
-        </div>
       </section>
 
       {/* ── POPULAR CATEGORIES ───────────────────────────── */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="flex items-end justify-between mb-8">
+        <Reveal className="flex items-end justify-between mb-8">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">Popular Categories</h2>
             <p className="mt-1 text-gray-500 text-sm">
@@ -205,47 +184,49 @@ export function Home() {
           >
             See all <ChevronRight className="size-4" />
           </Link>
-        </div>
+        </Reveal>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {SERVICE_CATEGORIES.slice(0, 10).map((category) => {
+          {SERVICE_CATEGORIES.slice(0, 10).map((category, i) => {
             const Icon = CATEGORY_ICONS[category] ?? Wrench
             const color = CATEGORY_COLORS[category] ?? { bg: 'bg-gray-50', icon: 'text-gray-600' }
             return (
-              <Link
-                key={category}
-                to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
-                className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 transition-all"
-              >
-                <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
-                  <Icon className="size-6" />
-                </span>
-                <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
-                  {category}
-                </span>
-              </Link>
+              <Reveal key={category} delay={i * 55}>
+                <Link
+                  to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
+                  className="press-feedback group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 hover:-translate-y-1 transition-all duration-200"
+                >
+                  <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
+                    <Icon className="size-6" />
+                  </span>
+                  <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
+                    {category}
+                  </span>
+                </Link>
+              </Reveal>
             )
           })}
         </div>
 
         {/* All categories grid - second row */}
         <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {SERVICE_CATEGORIES.slice(10).map((category) => {
+          {SERVICE_CATEGORIES.slice(10).map((category, i) => {
             const Icon = CATEGORY_ICONS[category] ?? Wrench
             const color = CATEGORY_COLORS[category] ?? { bg: 'bg-gray-50', icon: 'text-gray-600' }
             return (
-              <Link
-                key={category}
-                to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
-                className="group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 transition-all"
-              >
-                <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
-                  <Icon className="size-6" />
-                </span>
-                <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
-                  {category}
-                </span>
-              </Link>
+              <Reveal key={category} delay={i * 55}>
+                <Link
+                  to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
+                  className="press-feedback group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 hover:-translate-y-1 transition-all duration-200"
+                >
+                  <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
+                    <Icon className="size-6" />
+                  </span>
+                  <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
+                    {category}
+                  </span>
+                </Link>
+              </Reveal>
             )
           })}
         </div>
@@ -254,12 +235,12 @@ export function Home() {
       {/* ── HOW IT WORKS ─────────────────────────────────── */}
       <section className="bg-gray-50 py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
+          <Reveal className="text-center mb-12">
             <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
               How {APP_NAME} works
             </h2>
             <p className="mt-2 text-gray-500">Three easy steps to get the job done</p>
-          </div>
+          </Reveal>
 
           <div className="grid gap-8 sm:grid-cols-3">
             {[
@@ -287,65 +268,45 @@ export function Home() {
                 icon: CheckCircle,
                 color: 'bg-violet-50 text-violet-600',
               },
-            ].map((item) => (
-              <div
-                key={item.step}
-                className="relative rounded-2xl bg-white p-8 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
-              >
-                <span className="absolute -top-3 left-6 rounded-full bg-white border border-gray-200 px-3 py-0.5 text-xs font-bold text-gray-400 shadow-sm">
-                  STEP {item.step}
-                </span>
-                <span className={`inline-flex size-12 items-center justify-center rounded-xl ${item.color} mb-4`}>
-                  <item.icon className="size-6" />
-                </span>
-                <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
-                <p className="mt-2 text-sm text-gray-500 leading-relaxed">{item.description}</p>
-              </div>
+            ].map((item, i) => (
+              <Reveal key={item.step} delay={i * 150} animation="scale">
+                <div className="relative h-full rounded-2xl bg-white p-8 shadow-sm border border-gray-100 hover:shadow-md hover:-translate-y-1 transition-all duration-200">
+                  <span className="absolute -top-3 left-6 rounded-full bg-white border border-gray-200 px-3 py-0.5 text-xs font-bold text-gray-400 shadow-sm">
+                    STEP {item.step}
+                  </span>
+                  <span className={`inline-flex size-12 items-center justify-center rounded-xl ${item.color} mb-4`}>
+                    <item.icon className="size-6" />
+                  </span>
+                  <h3 className="text-lg font-semibold text-gray-900">{item.title}</h3>
+                  <p className="mt-2 text-sm text-gray-500 leading-relaxed">{item.description}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
 
-          <div className="mt-10 text-center">
+          <Reveal className="mt-10 text-center" delay={200}>
             <Link
               to={ROUTES.CREATE_POST}
-              className="inline-flex items-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/25"
+              className="press-feedback inline-flex items-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/25"
             >
               Post What You Need — It's Free
               <ArrowRight className="size-4" />
             </Link>
-          </div>
+          </Reveal>
         </div>
       </section>
 
-      {/* ── STATS BAND ───────────────────────────────────── */}
-      <section className="border-y border-gray-100 py-10">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
-            {[
-              { value: '500+',  label: 'Verified Providers',    icon: BadgeCheck },
-              { value: '1,000+', label: 'Services Completed',   icon: CheckCircle },
-              { value: '10',    label: 'Cities in Botswana',    icon: Users },
-              { value: '4.8★',  label: 'Average Rating',        icon: ThumbsUp },
-            ].map((stat) => (
-              <div key={stat.label} className="flex flex-col items-center text-center gap-1">
-                <stat.icon className="size-6 text-primary-500 mb-1" />
-                <p className="text-2xl font-bold text-gray-900 sm:text-3xl">{stat.value}</p>
-                <p className="text-xs text-gray-500 font-medium">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
       {/* ── WHY QUICKCONNECT ─────────────────────────────── */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
+        <Reveal className="text-center mb-12">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Why customers love {APP_NAME}
           </h2>
           <p className="mt-2 text-gray-500 text-sm">
             Built from the ground up for Botswana's service economy
           </p>
-        </div>
+        </Reveal>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {[
@@ -391,19 +352,18 @@ export function Home() {
                 'Providers are based in your city — Gaborone, Francistown, Maun, and more. Fast, local, reliable.',
               color: 'text-rose-500 bg-rose-50',
             },
-          ].map((feature) => (
-            <div
-              key={feature.title}
-              className="flex gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-md transition-shadow"
-            >
-              <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${feature.color}`}>
-                <feature.icon className="size-5" />
-              </span>
-              <div>
-                <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-                <p className="mt-1 text-sm text-gray-500 leading-relaxed">{feature.description}</p>
+          ].map((feature, i) => (
+            <Reveal key={feature.title} delay={i * 80}>
+              <div className="flex h-full gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+                <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${feature.color}`}>
+                  <feature.icon className="size-5" />
+                </span>
+                <div>
+                  <h3 className="font-semibold text-gray-900">{feature.title}</h3>
+                  <p className="mt-1 text-sm text-gray-500 leading-relaxed">{feature.description}</p>
+                </div>
               </div>
-            </div>
+            </Reveal>
           ))}
         </div>
       </section>
@@ -412,10 +372,10 @@ export function Home() {
       <section
         className="py-16 text-white text-center"
         style={{
-          background: 'linear-gradient(135deg, #0d3326 0%, #1a4a35 50%, #0f3d2e 100%)',
+          background: 'linear-gradient(160deg, #0f2258 0%, #1a3a8f 100%)',
         }}
       >
-        <div className="mx-auto max-w-2xl px-4">
+        <Reveal className="mx-auto max-w-2xl px-4">
           <h2 className="text-3xl font-bold sm:text-4xl">
             Ready to get started?
           </h2>
@@ -426,19 +386,19 @@ export function Home() {
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               to={ROUTES.REGISTER}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/30"
+              className="press-feedback inline-flex items-center justify-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/30"
             >
               Create a Free Account
               <ArrowRight className="size-4" />
             </Link>
             <Link
               to={ROUTES.LOOKING_FOR}
-              className="inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-8 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors backdrop-blur-sm"
+              className="press-feedback inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-8 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors backdrop-blur-sm"
             >
               Browse Requests
             </Link>
           </div>
-        </div>
+        </Reveal>
       </section>
 
     </div>

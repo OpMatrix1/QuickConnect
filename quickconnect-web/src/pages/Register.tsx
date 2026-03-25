@@ -63,13 +63,13 @@ export function Register() {
     <div className="mx-auto max-w-xl">
       <Link
         to={ROUTES.HOME}
-        className="inline-flex items-center gap-2 text-2xl font-bold text-primary-600"
+        className="animate-fade-up inline-flex items-center gap-2 text-2xl font-bold text-primary-600"
       >
         <span className="bg-primary-500 px-2 py-0.5 text-white rounded">QC</span>
         {APP_NAME}
       </Link>
 
-      <div className="mt-10">
+      <div className="animate-fade-up mt-10" style={{ animationDelay: '80ms' }}>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
           Create your account
         </h1>
@@ -79,7 +79,7 @@ export function Register() {
       </div>
 
       {/* Role selection */}
-      <div className="mt-6 flex rounded-lg border border-gray-200 p-1">
+      <div className="animate-fade-up mt-6 flex rounded-lg border border-gray-200 p-1" style={{ animationDelay: '160ms' }}>
         <button
           type="button"
           onClick={() => setRole('customer')}
@@ -106,7 +106,7 @@ export function Register() {
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+      <form onSubmit={handleSubmit} className="animate-fade-up mt-8 space-y-5" style={{ animationDelay: '240ms' }}>
         {error && (
           <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
             {error}

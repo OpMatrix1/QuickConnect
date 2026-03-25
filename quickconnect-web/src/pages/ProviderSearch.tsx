@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Reveal } from '@/components/ui/Reveal'
 import {
   Search,
   SlidersHorizontal,
@@ -188,7 +189,7 @@ export function ProviderSearch() {
         </div>
 
         {showFilters && (
-          <Card className="border-primary-100 bg-primary-50/30 p-4">
+          <Card className="animate-slide-down border-primary-100 bg-primary-50/30 p-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <Select
                 label="Category"
@@ -277,13 +278,13 @@ export function ProviderSearch() {
         />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {providers.map((provider) => (
+          {providers.map((provider, i) => (
+            <Reveal key={provider.id} delay={i * 60} animation="scale">
             <Card
-              key={provider.id}
               hover
               padding="none"
               onClick={() => handleProviderClick(provider.id)}
-              className="overflow-hidden"
+              className="card-hover-lift h-full overflow-hidden"
             >
               <div className="p-5">
                 <div className="flex gap-4">
@@ -335,6 +336,7 @@ export function ProviderSearch() {
                 <ChevronRight className="size-5 text-gray-400" />
               </div>
             </Card>
+            </Reveal>
           ))}
         </div>
       )}

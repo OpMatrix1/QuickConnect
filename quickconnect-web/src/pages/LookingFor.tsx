@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Plus, MapPin, Clock, MessageSquare } from 'lucide-react'
+import { Reveal } from '@/components/ui/Reveal'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { ROUTES } from '@/lib/constants'
@@ -310,8 +311,10 @@ export function LookingFor() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
+          {posts.map((post, i) => (
+            <Reveal key={post.id} delay={i * 55} animation="scale">
+              <PostCard post={post} />
+            </Reveal>
           ))}
         </div>
       )}

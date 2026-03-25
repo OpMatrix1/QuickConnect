@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/context/AuthContext'
 import { NotificationProvider } from '@/context/NotificationContext'
 import { Layout } from '@/components/layout/Layout'
+import { SplashScreen } from '@/components/ui/SplashScreen'
 import { Home } from '@/pages/Home'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
@@ -22,9 +24,22 @@ import { WalletPage } from '@/pages/Wallet'
 import { ROUTES } from '@/lib/constants'
 
 function App() {
+  // Show splash once per session (PWA launch = new session, so it shows every open)
+  const [showSplash, setShowSplash] = useState(
+    () => !sessionStorage.getItem('qc-splash-seen'),
+  )
+
   return (
     <AuthProvider>
       <NotificationProvider>
+        {showSplash && (
+          <SplashScreen
+            onDone={() => {
+              sessionStorage.setItem('qc-splash-seen', '1')
+              setShowSplash(false)
+            }}
+          />
+        )}
         <BrowserRouter basename={import.meta.env.BASE_URL}>
           <Routes>
             <Route element={<Layout />}>
