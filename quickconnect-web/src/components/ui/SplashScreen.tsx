@@ -15,7 +15,7 @@ export function SplashScreen({ onDone }: Props) {
   return (
     <div
       className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center select-none${exiting ? ' animate-splash-exit' : ''}`}
-      style={{ background: 'linear-gradient(160deg, #0a1a4d 0%, #1a3a8f 55%, #1e4db7 100%)' }}
+      style={{ background: 'linear-gradient(160deg, #1c0770 0%, #261cc1 55%, #3a5ae8 100%)' }}
       onAnimationEnd={(e) => {
         if (e.animationName === 'splash-exit') onDone()
       }}
@@ -37,7 +37,7 @@ export function SplashScreen({ onDone }: Props) {
 
         {/* QC logo icon */}
         <div
-          className="animate-splash-icon relative flex size-28 items-center justify-center rounded-[28px] bg-primary-500 font-extrabold text-white shadow-[0_12px_48px_rgba(24,119,242,0.55)]"
+          className="animate-splash-icon relative flex size-28 items-center justify-center rounded-[28px] bg-highlight-300 font-extrabold text-primary-900 shadow-[0_12px_48px_rgba(38,28,193,0.65)]"
           style={{ fontSize: '2.75rem', letterSpacing: '-0.5px' }}
         >
           QC

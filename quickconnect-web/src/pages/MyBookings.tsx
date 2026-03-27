@@ -12,6 +12,7 @@ import {
   Star,
   Wallet,
   MessageCircle,
+  CalendarCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
@@ -298,7 +299,7 @@ export function MyBookings() {
   const hasReview = (b: BookingWithDetails) =>
     b.reviews && b.reviews.length > 0
 
-  if (authLoading || !profile) {
+  if (authLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <Spinner size="lg" />
@@ -307,8 +308,40 @@ export function MyBookings() {
   }
 
   if (!user) {
-    navigate(ROUTES.LOGIN, { replace: true })
-    return null
+    return (
+      <div className="flex min-h-[calc(100vh-10rem)] flex-col items-center justify-center px-4 text-center">
+        <div className="flex size-20 items-center justify-center rounded-2xl bg-primary-50 mb-6">
+          <CalendarCheck className="size-10 text-primary-500" />
+        </div>
+        <h1 className="text-2xl font-bold text-gray-900">View your bookings</h1>
+        <p className="mt-3 max-w-sm text-gray-500 text-sm leading-relaxed">
+          Sign in to your account to track your bookings, manage appointments,
+          and communicate with service providers.
+        </p>
+        <div className="mt-8 flex flex-col sm:flex-row gap-3">
+          <Link
+            to={ROUTES.LOGIN}
+            className="inline-flex items-center justify-center rounded-xl bg-primary-500 px-6 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-sm"
+          >
+            Sign In
+          </Link>
+          <Link
+            to={ROUTES.REGISTER}
+            className="inline-flex items-center justify-center rounded-xl border-2 border-primary-500 px-6 py-3 text-sm font-semibold text-primary-600 hover:bg-primary-50 transition-colors"
+          >
+            Create a Free Account
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <div className="flex min-h-[400px] items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    )
   }
 
   return (

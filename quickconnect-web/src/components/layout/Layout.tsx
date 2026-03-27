@@ -16,7 +16,7 @@ export function Layout() {
   const showSidebar = !!user && !isHome && !isAuthPage && !isChatPage
 
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: '#F0F2F5' }}>
+    <div className="flex min-h-screen flex-col" style={{ background: '#F0EFFF' }}>
       <Header />
 
       {/* pt-14 = 56 px for fixed header (h-14) */}

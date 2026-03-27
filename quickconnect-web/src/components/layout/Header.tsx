@@ -96,13 +96,14 @@ export function Header() {
                 to={to}
                 title={label}
                 className={cn(
-                  'relative flex items-center justify-center h-12 w-[88px] rounded-lg transition-colors',
+                  'relative flex flex-col items-center justify-center gap-0.5 h-12 w-[88px] rounded-lg transition-colors',
                   isActive
                     ? 'text-primary-500'
                     : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
                 )}
               >
-                <Icon className="size-6" />
+                <Icon className="size-5" />
+                <span className="text-[10px] font-medium leading-none">{label}</span>
                 {isActive && (
                   <span className="absolute bottom-[-1px] left-0 right-0 h-[3px] rounded-t-full bg-primary-500" />
                 )}

@@ -106,7 +106,7 @@ export function Home() {
       <section
         className="relative flex flex-col items-center justify-center min-h-[560px] px-4 pt-10 pb-16 text-white overflow-hidden"
         style={{
-          background: 'linear-gradient(160deg, #0f2258 0%, #1a3a8f 100%)',
+          background: 'linear-gradient(160deg, #1c0770 0%, #261cc1 100%)',
         }}
       >
 
@@ -116,7 +116,7 @@ export function Home() {
           >
             Find trusted local services
             <br />
-            <span className="text-primary-400">anywhere in Botswana</span>
+            <span className="text-highlight-300">anywhere in Botswana</span>
           </h1>
           <p
             className="animate-fade-up mt-4 max-w-xl mx-auto text-lg text-white/70"
@@ -143,7 +143,7 @@ export function Home() {
             </div>
             <button
               type="submit"
-              className="press-feedback m-1.5 rounded-full bg-primary-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shrink-0"
+              className="press-feedback m-1.5 rounded-full bg-highlight-300 px-6 py-2.5 text-sm font-semibold text-primary-900 hover:bg-highlight-400 transition-colors shrink-0"
             >
               Search
             </button>
@@ -233,7 +233,7 @@ export function Home() {
       </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────── */}
-      <section className="bg-gray-50 py-16">
+      <section className="bg-primary-50 py-16">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <Reveal className="text-center mb-12">
             <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">
@@ -287,7 +287,7 @@ export function Home() {
           <Reveal className="mt-10 text-center" delay={200}>
             <Link
               to={ROUTES.CREATE_POST}
-              className="press-feedback inline-flex items-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/25"
+              className="press-feedback inline-flex items-center gap-2 rounded-full bg-highlight-300 px-8 py-3 text-sm font-semibold text-primary-900 hover:bg-highlight-400 transition-colors shadow-lg shadow-primary-500/25"
             >
               Post What You Need — It's Free
               <ArrowRight className="size-4" />
@@ -372,7 +372,7 @@ export function Home() {
       <section
         className="py-16 text-white text-center"
         style={{
-          background: 'linear-gradient(160deg, #0f2258 0%, #1a3a8f 100%)',
+          background: 'linear-gradient(160deg, #1c0770 0%, #261cc1 100%)',
         }}
       >
         <Reveal className="mx-auto max-w-2xl px-4">
@@ -386,7 +386,7 @@ export function Home() {
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               to={ROUTES.REGISTER}
-              className="press-feedback inline-flex items-center justify-center gap-2 rounded-full bg-primary-500 px-8 py-3 text-sm font-semibold text-white hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/30"
+              className="press-feedback inline-flex items-center justify-center gap-2 rounded-full bg-highlight-300 px-8 py-3 text-sm font-semibold text-primary-900 hover:bg-highlight-400 transition-colors shadow-lg shadow-highlight-300/30"
             >
               Create a Free Account
               <ArrowRight className="size-4" />

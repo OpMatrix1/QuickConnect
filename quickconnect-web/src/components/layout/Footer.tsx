@@ -30,7 +30,7 @@ const CITIES = [
 
 export function Footer() {
   return (
-    <footer style={{ background: '#0f1e3d' }} className="text-gray-300">
+    <footer style={{ background: '#1c0770' }} className="text-gray-300">
       {/* Main footer grid */}
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
@@ -57,11 +57,11 @@ export function Footer() {
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="size-4 text-primary-400 shrink-0" />
-                <span>hello@quickconnect.bw</span>
+                <span>quickconnectbw@gmail.com</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="size-4 text-primary-400 shrink-0" />
-                <span>+267 700 00 000</span>
+                <span>+267 76 740 259</span>
               </div>
             </div>
           </div>
@@ -117,7 +117,7 @@ export function Footer() {
       </div>
 
       {/* Bottom bar */}
-      <div style={{ background: '#080f20' }} className="border-t border-white/10">
+      <div style={{ background: '#120550' }} className="border-t border-white/10">
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-xs text-gray-500">
             © 2026 {APP_NAME}. All rights reserved. Made with care for Botswana.

@@ -1,29 +1,41 @@
 @import "tailwindcss";
 
 @theme {
-  /* Facebook blue */
-  --color-primary-50: #e7f3ff;
-  --color-primary-100: #c0daff;
-  --color-primary-200: #8fbeff;
-  --color-primary-300: #5aa0f7;
-  --color-primary-400: #3b8bef;
-  --color-primary-500: #1877f2;
-  --color-primary-600: #166fe5;
-  --color-primary-700: #1264cc;
-  --color-primary-800: #0d52a8;
-  --color-primary-900: #09408a;
+  /* Deep Indigo — primary brand */
+  --color-primary-50: #eeeeff;
+  --color-primary-100: #d7d5fe;
+  --color-primary-200: #b5b0fd;
+  --color-primary-300: #8a84f9;
+  --color-primary-400: #5c55ea;
+  --color-primary-500: #261cc1;
+  --color-primary-600: #2018a6;
+  --color-primary-700: #1b138d;
+  --color-primary-800: #160f74;
+  --color-primary-900: #1c0770;
 
-  /* Dark navy — accent for hero bg, CTA */
-  --color-accent-50: #f0f4ff;
-  --color-accent-100: #e0e8ff;
-  --color-accent-200: #c0d0ff;
-  --color-accent-300: #93acf5;
-  --color-accent-400: #6683e8;
-  --color-accent-500: #4361d8;
-  --color-accent-600: #3450c4;
-  --color-accent-700: #2840a8;
-  --color-accent-800: #1e3080;
-  --color-accent-900: #142060;
+  /* Sky Blue — secondary / light accent */
+  --color-accent-50: #e6f3ff;
+  --color-accent-100: #bce2ff;
+  --color-accent-200: #85caff;
+  --color-accent-300: #3a9aff;
+  --color-accent-400: #1a87ee;
+  --color-accent-500: #0872d2;
+  --color-accent-600: #065fb5;
+  --color-accent-700: #044d97;
+  --color-accent-800: #033b7a;
+  --color-accent-900: #022a5c;
+
+  /* Lime Yellow — highlight / CTA pop */
+  --color-highlight-50: #feffd6;
+  --color-highlight-100: #fbff99;
+  --color-highlight-200: #f6ff6a;
+  --color-highlight-300: #f1ff5e;
+  --color-highlight-400: #e8f500;
+  --color-highlight-500: #d4e200;
+  --color-highlight-600: #b8c800;
+  --color-highlight-700: #96a300;
+  --color-highlight-800: #747e00;
+  --color-highlight-900: #525900;
 
   --color-success-50: #f0fdf4;
   --color-success-500: #22c55e;
