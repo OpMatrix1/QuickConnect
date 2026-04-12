@@ -152,9 +152,17 @@ export function PostDetail() {
     if (!user || !post || !profile || profile.role !== 'provider') return
 
     const price = parseFloat(quotePrice)
-    if (isNaN(price) || price < 0) {
-      setQuoteError('Enter a valid price')
+    if (!quotePrice || isNaN(price) || price <= 0) {
+      setQuoteError('Enter a price greater than zero')
       return
+    }
+    if (quoteDate) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (new Date(quoteDate) < today) {
+        setQuoteError('Available date cannot be in the past')
+        return
+      }
     }
 
     setSubmittingQuote(true)

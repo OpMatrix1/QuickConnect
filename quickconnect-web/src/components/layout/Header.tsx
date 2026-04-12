@@ -4,7 +4,7 @@ import {
   Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Wallet,
   Search, Home as HomeIcon, FileText, Users, CalendarCheck,
 } from 'lucide-react'
-import { cn, getInitials } from '@/lib/utils'
+import { cn, getInitials, formatRelativeTime } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
 import { useAuth } from '@/context/AuthContext'
 import { useNotifications } from '@/context/NotificationContext'
@@ -20,21 +20,33 @@ export function Header() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { user, profile, signOut } = useAuth()
-  const { unreadCount } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead } = useNotifications()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const notifRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setDropdownOpen(false)
       }
+      if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotifOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // Mark all as read as soon as the panel is opened
+  useEffect(() => {
+    if (notifOpen && unreadCount > 0) {
+      markAllAsRead()
+    }
+  }, [notifOpen, unreadCount, markAllAsRead])
 
   const handleSignOut = async () => {
     await signOut()
@@ -117,18 +129,55 @@ export function Header() {
           {user ? (
             <>
               {/* Notification bell */}
-              <Link
-                to={ROUTES.CHAT}
-                className="relative flex size-10 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                aria-label="Messages"
-              >
-                <Bell className="size-5" />
-                {unreadCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-danger-500 text-[10px] font-bold text-white">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
+              <div className="relative" ref={notifRef}>
+                <button
+                  onClick={() => setNotifOpen((o) => !o)}
+                  className="relative flex size-10 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+                  aria-label="Notifications"
+                  aria-expanded={notifOpen}
+                >
+                  <Bell className="size-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-danger-500 text-[10px] font-bold text-white">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {notifOpen && (
+                  <div className="absolute right-0 mt-2 w-80 max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-50">
+                    <div className="sticky top-0 flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100">
+                      <p className="text-sm font-semibold text-gray-900">Notifications</p>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-sm text-gray-400">No notifications yet</p>
+                    ) : (
+                      notifications.slice(0, 15).map((n) => (
+                        <div
+                          key={n.id}
+                          className={cn(
+                            'px-4 py-3 border-b border-gray-50 last:border-0 transition-colors',
+                            !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
+                          )}
+                        >
+                          <div className="flex items-start gap-2">
+                            {!n.is_read && (
+                              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
+                            )}
+                            <div className={!n.is_read ? '' : 'pl-4'}>
+                              <p className="text-sm font-medium text-gray-900 leading-snug">{n.title}</p>
+                              {n.body && (
+                                <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{n.body}</p>
+                              )}
+                              <p className="mt-1 text-[11px] text-gray-400">{formatRelativeTime(n.created_at)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 )}
-              </Link>
+              </div>
 
               {/* Avatar dropdown */}
               <div className="relative" ref={dropdownRef}>

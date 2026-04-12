@@ -10,10 +10,9 @@ export function Layout() {
 
   const isHome = pathname === '/'
   const isAuthPage = pathname === '/login' || pathname === '/register'
-  // Chat has its own full-width 2-pane layout; don't wrap it with a sidebar
   const isChatPage = pathname.startsWith('/chat')
 
-  const showSidebar = !!user && !isHome && !isAuthPage && !isChatPage
+  const showSidebar = !!user && !isHome && !isAuthPage
 
   return (
     <div className="flex min-h-screen flex-col" style={{ background: '#F0EFFF' }}>
@@ -31,14 +30,9 @@ export function Layout() {
           <div key={pathname} className="animate-page-enter min-h-[calc(100vh-3.5rem)] bg-white">
             <Outlet />
           </div>
-        ) : isChatPage ? (
-          /* Chat: full width, white bg */
-          <div key={pathname} className="animate-page-enter mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-            <Outlet />
-          </div>
         ) : showSidebar ? (
           /* Inner authenticated pages: sidebar + content */
-          <div className="mx-auto max-w-[1300px] px-4 py-4 sm:px-6 lg:px-8">
+          <div className={isChatPage ? 'mx-auto max-w-[1300px] px-4 pt-4 sm:px-6 lg:px-8' : 'mx-auto max-w-[1300px] px-4 py-4 sm:px-6 lg:px-8'}>
             <div className="flex gap-4 items-start">
               <div className="hidden lg:block w-[260px] shrink-0">
                 <Sidebar />
@@ -56,7 +50,7 @@ export function Layout() {
         )}
       </main>
 
-      {!isHome && <Footer />}
+      {!isHome && !isChatPage && <Footer />}
     </div>
   )
 }

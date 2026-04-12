@@ -57,8 +57,10 @@ export function CreatePost() {
   function validate(): FormErrors {
     const err: FormErrors = {}
     if (!title.trim()) err.title = 'Title is required'
-    if (title.length > 60) err.title = 'Title must be 60 characters or less'
+    else if (title.trim().length < 5) err.title = 'Title must be at least 5 characters'
+    else if (title.length > 60) err.title = 'Title must be 60 characters or less'
     if (!description.trim()) err.description = 'Description is required'
+    else if (description.trim().length < 10) err.description = 'Description must be at least 10 characters'
     if (!categoryId) err.categoryId = 'Please select a category'
     const min = budgetMin ? parseFloat(budgetMin) : null
     const max = budgetMax ? parseFloat(budgetMax) : null
@@ -66,6 +68,11 @@ export function CreatePost() {
     if (max != null && (isNaN(max) || max < 0)) err.budgetMax = 'Enter a valid amount'
     if (min != null && max != null && min > max) {
       err.budgetMax = 'Max budget must be greater than min'
+    }
+    if (preferredDate) {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (new Date(preferredDate) < today) err.preferredDate = 'Preferred date cannot be in the past'
     }
     setErrors(err)
     return err
@@ -287,6 +294,7 @@ export function CreatePost() {
                 type="date"
                 value={preferredDate}
                 onChange={(e) => setPreferredDate(e.target.value)}
+                error={errors.preferredDate}
               />
               <Input
                 label="Preferred Time"

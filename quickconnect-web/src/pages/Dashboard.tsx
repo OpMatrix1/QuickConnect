@@ -351,45 +351,25 @@ export function Dashboard() {
         </section>
 
         <section className="grid gap-4 sm:grid-cols-3">
-          <Reveal delay={0} animation="scale">
-            <Card padding="md" className="card-hover-lift">
-              <CardContent className="flex items-center gap-4">
-                <span className="flex size-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
-                  <FileText className="size-6" />
-                </span>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{activePostsCount}</p>
-                  <p className="text-sm text-gray-600">Active Posts</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Reveal>
-          <Reveal delay={80} animation="scale">
-            <Card padding="md" className="card-hover-lift">
-              <CardContent className="flex items-center gap-4">
-                <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
-                  <CalendarCheck className="size-6" />
-                </span>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{pendingBookingsCount}</p>
-                  <p className="text-sm text-gray-600">Pending Bookings</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Reveal>
-          <Reveal delay={160} animation="scale">
-            <Card padding="md" className="card-hover-lift">
-              <CardContent className="flex items-center gap-4">
-                <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
-                  <TrendingUp className="size-6" />
-                </span>
-                <div>
-                  <p className="text-2xl font-bold text-gray-900">{completedBookingsCount}</p>
-                  <p className="text-sm text-gray-600">Completed Services</p>
-                </div>
-              </CardContent>
-            </Card>
-          </Reveal>
+          {[
+            { icon: FileText, bg: 'bg-primary-100', color: 'text-primary-600', value: activePostsCount, label: 'Active Posts', delay: 0 },
+            { icon: CalendarCheck, bg: 'bg-warning-100', color: 'text-warning-600', value: pendingBookingsCount, label: 'Pending Bookings', delay: 80 },
+            { icon: TrendingUp, bg: 'bg-success-100', color: 'text-success-600', value: completedBookingsCount, label: 'Completed Services', delay: 160 },
+          ].map(({ icon: Icon, bg, color, value, label, delay }) => (
+            <Reveal key={label} delay={delay} animation="scale" className="h-full">
+              <Card padding="md" className="card-hover-lift h-full">
+                <CardContent className="flex h-full flex-col gap-3">
+                  <span className={`flex size-10 items-center justify-center rounded-xl ${bg} ${color}`}>
+                    <Icon className="size-5" />
+                  </span>
+                  <div>
+                    <p className="text-xl font-bold text-gray-900 leading-tight">{value}</p>
+                    <p className="mt-0.5 text-sm text-gray-500">{label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </Reveal>
+          ))}
         </section>
 
         <section>
@@ -524,7 +504,7 @@ export function Dashboard() {
         </Link>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
         {[
           { icon: Star, bg: 'bg-warning-100', color: 'text-warning-600', value: providerData?.rating_avg?.toFixed(1) ?? '0.0', label: 'Rating' },
           { icon: MessageSquare, bg: 'bg-primary-100', color: 'text-primary-600', value: opportunityPosts.length, label: 'Active Opportunities' },
@@ -532,15 +512,15 @@ export function Dashboard() {
           { icon: TrendingUp, bg: 'bg-success-100', color: 'text-success-600', value: providerBookings.filter((b) => b.status === 'completed').length, label: 'Completed Jobs' },
           { icon: DollarSign, bg: 'bg-success-100', color: 'text-success-600', value: formatCurrency(earnings), label: 'Total Earnings' },
         ].map(({ icon: Icon, bg, color, value, label }, i) => (
-          <Reveal key={label} delay={i * 70} animation="scale">
-            <Card padding="md" className="card-hover-lift">
-              <CardContent className="flex items-center gap-4">
-                <span className={`flex size-12 items-center justify-center rounded-xl ${bg} ${color}`}>
-                  <Icon className="size-6" />
+          <Reveal key={label} delay={i * 70} animation="scale" className="h-full">
+            <Card padding="md" className="card-hover-lift h-full">
+              <CardContent className="flex h-full flex-col gap-3">
+                <span className={`flex size-10 items-center justify-center rounded-xl ${bg} ${color}`}>
+                  <Icon className="size-5" />
                 </span>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900">{value}</p>
-                  <p className="text-sm text-gray-600">{label}</p>
+                  <p className="text-xl font-bold text-gray-900 leading-tight">{value}</p>
+                  <p className="mt-0.5 text-sm text-gray-500">{label}</p>
                 </div>
               </CardContent>
             </Card>

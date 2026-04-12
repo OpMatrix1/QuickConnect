@@ -135,9 +135,26 @@ export function Profile() {
 
   const handleSaveProfile = async () => {
     if (!user || !profile) return
-    setSaving(true)
     setError(null)
     setSuccess(null)
+
+    if (!fullName.trim() || fullName.trim().length < 2) {
+      setError('Full name must be at least 2 characters')
+      return
+    }
+    if (phone) {
+      const cleaned = phone.replace(/[\s()+-]/g, '')
+      if (!/^(267)?[0-9]{8}$/.test(cleaned)) {
+        setError('Enter a valid Botswana phone number (e.g. +267 71 234 567)')
+        return
+      }
+    }
+    if (profile.role === 'provider' && !businessName.trim()) {
+      setError('Business name is required for providers')
+      return
+    }
+
+    setSaving(true)
     try {
       const { error: profileError } = await updateProfile({
         full_name: fullName.trim(),
@@ -179,6 +196,11 @@ export function Profile() {
     if (!file || !user) return
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Image must be less than 2MB')
+      if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
@@ -646,6 +668,22 @@ function ServiceModal({
     if (!categoryId) {
       setError('Please select a category')
       return
+    }
+    if (priceType !== 'quote') {
+      const min = priceMin ? parseFloat(priceMin) : null
+      const max = priceMax ? parseFloat(priceMax) : null
+      if (min !== null && (isNaN(min) || min < 0)) {
+        setError('Min price must be a valid non-negative amount')
+        return
+      }
+      if (max !== null && (isNaN(max) || max < 0)) {
+        setError('Max price must be a valid non-negative amount')
+        return
+      }
+      if (min !== null && max !== null && min > max) {
+        setError('Max price must be greater than or equal to min price')
+        return
+      }
     }
 
     setSaving(true)

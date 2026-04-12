@@ -249,7 +249,7 @@ export function Chat() {
     : null
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm lg:h-[calc(100vh-10rem)]">
+    <div className="flex h-[calc(100vh-4.5rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-1 min-h-0">
         <div
           className={cn(

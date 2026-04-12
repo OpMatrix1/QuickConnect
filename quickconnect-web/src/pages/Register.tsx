@@ -27,6 +27,20 @@ export function Register() {
     e.preventDefault()
     setError(null)
 
+    if (fullName.trim().length < 2) {
+      setError('Full name must be at least 2 characters')
+      return
+    }
+
+    if (phone) {
+      const cleaned = phone.replace(/[\s()+-]/g, '')
+      // Accept 8-digit local numbers or with +267 prefix (total 11 digits with country code)
+      if (!/^(267)?[0-9]{8}$/.test(cleaned)) {
+        setError('Enter a valid Botswana phone number (e.g. 71 234 567 or +267 71 234 567)')
+        return
+      }
+    }
+
     if (password !== confirmPassword) {
       setError('Passwords do not match')
       return

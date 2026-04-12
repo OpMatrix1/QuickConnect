@@ -43,7 +43,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!user) return
 
     const channel = supabase
-      .channel('notifications')
+      .channel(`notifications-${user.id}`)
       .on(
         'postgres_changes',
         {
@@ -54,6 +54,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         },
         (payload) => {
           setNotifications((prev) => [payload.new as Notification, ...prev])
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          setNotifications((prev) =>
+            prev.map((n) => (n.id === (payload.new as Notification).id ? (payload.new as Notification) : n))
+          )
         }
       )
       .subscribe()

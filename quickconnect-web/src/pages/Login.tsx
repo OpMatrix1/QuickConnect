@@ -14,6 +14,7 @@ export function Login() {
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
   const [submitting, setSubmitting] = useState(false)
 
   // Redirect when auth state has a logged-in user
@@ -26,6 +27,24 @@ export function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    const errs: { email?: string; password?: string } = {}
+    if (!email.trim()) {
+      errs.email = 'Email is required'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      errs.email = 'Enter a valid email address'
+    }
+    if (!password) {
+      errs.password = 'Password is required'
+    } else if (password.length < 6) {
+      errs.password = 'Password must be at least 6 characters'
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs)
+      return
+    }
+    setFieldErrors({})
+
     setSubmitting(true)
     try {
       const { error: signInError } = await signIn(email, password)
@@ -84,13 +103,15 @@ export function Login() {
                   name="email"
                   type="email"
                   autoComplete="email"
-                  required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: undefined })) }}
+                  className={`block w-full rounded-lg border py-2.5 pl-10 pr-4 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary-500/20 ${fieldErrors.email ? 'border-danger-500 focus:border-danger-500' : 'border-gray-300 focus:border-primary-500'}`}
                   placeholder="you@example.com"
                 />
               </div>
+              {fieldErrors.email && (
+                <p className="mt-1 text-xs text-danger-600">{fieldErrors.email}</p>
+              )}
             </div>
 
             <div>
@@ -104,13 +125,15 @@ export function Login() {
                   name="password"
                   type="password"
                   autoComplete="current-password"
-                  required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 py-2.5 pl-10 pr-4 text-gray-900 placeholder-gray-400 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                  onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: undefined })) }}
+                  className={`block w-full rounded-lg border py-2.5 pl-10 pr-4 text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-primary-500/20 ${fieldErrors.password ? 'border-danger-500 focus:border-danger-500' : 'border-gray-300 focus:border-primary-500'}`}
                   placeholder="••••••••"
                 />
               </div>
+              {fieldErrors.password && (
+                <p className="mt-1 text-xs text-danger-600">{fieldErrors.password}</p>
+              )}
             </div>
 
             <div className="flex items-center justify-between">
