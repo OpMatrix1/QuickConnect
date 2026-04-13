@@ -10,11 +10,12 @@ import {
   AlertTriangle,
   Check,
   RotateCcw,
+  Flag,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { ROUTES } from '@/lib/constants'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { BOOKING_STATUS_CONFIG } from '@/lib/utils'
 import type { PaymentMethod } from '@/lib/types'
 import {
@@ -82,6 +83,46 @@ export function AdminReports() {
   const [disputedPayments, setDisputedPayments] = useState<DisputedPayment[]>([])
   const [disputeActionLoading, setDisputeActionLoading] = useState<string | null>(null)
   const [disputeError, setDisputeError] = useState<string | null>(null)
+
+  interface UserReport {
+    id: string
+    reporter_id: string
+    reported_user_id: string
+    reason: string
+    description: string | null
+    status: string
+    created_at: string
+    reporter: { full_name: string } | null
+    reported: { full_name: string } | null
+  }
+  const [userReports, setUserReports] = useState<UserReport[]>([])
+  const [reportActionLoading, setReportActionLoading] = useState<string | null>(null)
+
+  const fetchUserReports = async () => {
+    const { data } = await supabase
+      .from('reports')
+      .select(`
+        id, reporter_id, reported_user_id, reason, description, status, created_at,
+        reporter:profiles!reports_reporter_id_fkey(full_name),
+        reported:profiles!reports_reported_user_id_fkey(full_name)
+      `)
+      .order('created_at', { ascending: false })
+    setUserReports((data ?? []) as unknown as UserReport[])
+  }
+
+  const handleReportAction = async (reportId: string, newStatus: string) => {
+    setReportActionLoading(reportId + newStatus)
+    try {
+      const { error } = await supabase
+        .from('reports')
+        .update({ status: newStatus } as any)
+        .eq('id' as any, reportId as any)
+      if (error) throw error
+      await fetchUserReports()
+    } finally {
+      setReportActionLoading(null)
+    }
+  }
 
   const fetchDisputedPayments = async () => {
     const { data } = await supabase
@@ -285,6 +326,7 @@ export function AdminReports() {
 
     fetchData()
     fetchDisputedPayments()
+    fetchUserReports()
   }, [user?.id, profile?.role, dateFrom, dateTo])
 
   if (authLoading) {
@@ -533,6 +575,79 @@ export function AdminReports() {
                     </div>
                   </li>
                 ))}
+            </ul>
+          </Card>
+        )}
+      </section>
+
+      {/* User Reports */}
+      <section>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <Flag className="size-5 text-danger-500" />
+          User Reports
+        </h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Reports submitted by users about other users or providers. Review and take action as needed.
+        </p>
+
+        {userReports.length === 0 ? (
+          <EmptyState
+            icon={<Check className="size-10 text-success-500" />}
+            title="No reports submitted"
+            description="No user reports have been filed."
+          />
+        ) : (
+          <Card padding="none">
+            <ul className="divide-y divide-gray-100">
+              {userReports.map((r) => {
+                const reporterName = (r.reporter as { full_name: string } | null)?.full_name ?? 'Unknown'
+                const reportedName = (r.reported as { full_name: string } | null)?.full_name ?? 'Unknown'
+                return (
+                  <li key={r.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <Badge variant={
+                          r.status === 'pending' ? 'warning' :
+                          r.status === 'resolved' ? 'success' :
+                          r.status === 'dismissed' ? 'default' : 'info'
+                        }>
+                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                        </Badge>
+                        <span className="text-sm font-medium text-gray-700 capitalize">
+                          {r.reason.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        <strong>{reporterName}</strong> reported <strong>{reportedName}</strong>
+                      </p>
+                      {r.description && (
+                        <p className="text-sm text-gray-500 mt-1 line-clamp-2">{r.description}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">{formatDate(r.created_at)}</p>
+                    </div>
+                    {r.status === 'pending' && (
+                      <div className="flex gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={reportActionLoading === r.id + 'dismissed'}
+                          onClick={() => handleReportAction(r.id, 'dismissed')}
+                          className="text-gray-600"
+                        >
+                          Dismiss
+                        </Button>
+                        <Button
+                          size="sm"
+                          loading={reportActionLoading === r.id + 'resolved'}
+                          onClick={() => handleReportAction(r.id, 'resolved')}
+                        >
+                          Mark Resolved
+                        </Button>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </Card>
         )}

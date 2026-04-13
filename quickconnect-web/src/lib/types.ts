@@ -43,6 +43,13 @@ export type Notification = Database['public']['Tables']['notifications']['Row']
 export type CategoryRequest = Database['public']['Tables']['category_requests']['Row']
 export type CategoryRequestInsert = Database['public']['Tables']['category_requests']['Insert']
 
+export type Quote = Database['public']['Tables']['quotes']['Row']
+export type QuoteInsert = Database['public']['Tables']['quotes']['Insert']
+export type QuoteUpdate = Database['public']['Tables']['quotes']['Update']
+
+export type Report = Database['public']['Tables']['reports']['Row']
+export type ReportInsert = Database['public']['Tables']['reports']['Insert']
+
 export type BookingStatus = 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 export type PostStatus = 'active' | 'matched' | 'expired' | 'cancelled'
 export type Urgency = 'low' | 'medium' | 'high' | 'emergency'
@@ -51,6 +58,9 @@ export type PaymentStatus = 'pending' | 'held' | 'released' | 'refunded' | 'fail
 export type WalletTransactionType = 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
 export type WalletTransactionDirection = 'credit' | 'debit'
 export type CategoryRequestStatus = 'pending' | 'approved' | 'declined'
+export type QuoteStatus = 'requested' | 'quoted' | 'accepted' | 'rejected' | 'expired'
+export type ReportReason = 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'fake_profile' | 'other'
+export type ReportStatus = 'pending' | 'reviewed' | 'resolved' | 'dismissed'
 export type PriceType = 'fixed' | 'hourly' | 'quote'
 export type UserRole = 'customer' | 'provider' | 'admin'
 

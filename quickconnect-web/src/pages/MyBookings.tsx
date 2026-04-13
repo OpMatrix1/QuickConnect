@@ -13,6 +13,8 @@ import {
   Wallet,
   MessageCircle,
   CalendarCheck,
+  Edit2,
+  ShieldCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
@@ -35,6 +37,7 @@ import {
   Textarea,
   Modal,
   StarRating,
+  Input,
 } from '@/components/ui'
 
 type StatusFilter = 'all' | BookingStatus
@@ -51,15 +54,15 @@ interface BookingWithDetails extends Booking {
   reviews?: { id: string }[]
 }
 
+// Cancelled moved after in_progress, completed stays last
 const STATUS_TABS: { id: StatusFilter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'pending', label: 'Pending' },
   { id: 'confirmed', label: 'Confirmed' },
   { id: 'in_progress', label: 'In Progress' },
-  { id: 'completed', label: 'Completed' },
   { id: 'cancelled', label: 'Cancelled' },
+  { id: 'completed', label: 'Completed' },
 ]
-
 
 function getBookingTitle(b: BookingWithDetails): string {
   if (b.services?.title) return b.services.title
@@ -93,10 +96,18 @@ export function MyBookings() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [reviewModal, setReviewModal] = useState<BookingWithDetails | null>(null)
   const [paymentModal, setPaymentModal] = useState<BookingWithDetails | null>(null)
+  const [editModal, setEditModal] = useState<BookingWithDetails | null>(null)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
   const isProvider = profile?.role === 'provider'
+
+  // Edit modal form state
+  const [editDate, setEditDate] = useState('')
+  const [editTime, setEditTime] = useState('')
+  const [editAddress, setEditAddress] = useState('')
+  const [editNotes, setEditNotes] = useState('')
+  const [editPrice, setEditPrice] = useState('')
 
   const fetchBookings = useCallback(async () => {
     if (!user) return
@@ -107,7 +118,7 @@ export function MyBookings() {
         const { data: providerRow } = await supabase
           .from('service_providers')
           .select('id')
-          .eq('profile_id', user.id)
+          .eq('profile_id' as any, user.id as any)
           .single()
         const providerId = (providerRow as { id: string } | null)?.id
         if (!providerId) {
@@ -128,7 +139,7 @@ export function MyBookings() {
             reviews(id)
           `
           )
-          .eq('provider_id', providerId)
+          .eq('provider_id' as any, providerId as any)
           .order('created_at', { ascending: false })
 
         if (fetchError) throw fetchError
@@ -149,7 +160,7 @@ export function MyBookings() {
             reviews(id)
           `
           )
-          .eq('customer_id', user.id)
+          .eq('customer_id' as any, user.id as any)
           .order('created_at', { ascending: false })
 
         if (fetchError) throw fetchError
@@ -180,13 +191,46 @@ export function MyBookings() {
     try {
       const { error } = await supabase
         .from('bookings')
-        .update({ status: newStatus })
-        .eq('id', bookingId)
+        .update({ status: newStatus } as any)
+        .eq('id' as any, bookingId as any)
       if (error) throw error
       await fetchBookings()
       setExpandedId(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const openEditModal = (booking: BookingWithDetails) => {
+    setEditDate(booking.scheduled_date ?? '')
+    setEditTime(booking.scheduled_time ?? '')
+    setEditAddress(booking.location_address ?? '')
+    setEditNotes(booking.notes ?? '')
+    setEditPrice(booking.agreed_price != null ? String(booking.agreed_price) : '')
+    setEditModal(booking)
+  }
+
+  const submitEdit = async () => {
+    if (!editModal) return
+    setActionLoading(editModal.id)
+    try {
+      const { error } = await supabase
+        .from('bookings')
+        .update({
+          scheduled_date: editDate || null,
+          scheduled_time: editTime || null,
+          location_address: editAddress || null,
+          notes: editNotes || null,
+          agreed_price: editPrice ? parseFloat(editPrice) : null,
+        } as any)
+        .eq('id' as any, editModal.id as any)
+      if (error) throw error
+      setEditModal(null)
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update booking')
     } finally {
       setActionLoading(null)
     }
@@ -202,7 +246,7 @@ export function MyBookings() {
         provider_id: reviewModal.provider_id,
         rating: reviewRating,
         comment: reviewComment || null,
-      })
+      } as any)
       if (error) throw error
       setReviewModal(null)
       setReviewRating(5)
@@ -220,7 +264,7 @@ export function MyBookings() {
     const { data } = await supabase
       .from('wallets')
       .select('balance')
-      .eq('user_id', user.id)
+      .eq('user_id' as any, user.id as any)
       .single()
     setWalletBalance((data as { balance: number } | null)?.balance ?? null)
   }
@@ -261,7 +305,7 @@ export function MyBookings() {
       const { error } = await supabase
         .from('payments')
         .update({ [field]: true } as any)
-        .eq('id', payment.id)
+        .eq('id' as any, payment.id as any)
       if (error) throw error
       await fetchBookings()
     } catch (err) {
@@ -281,7 +325,7 @@ export function MyBookings() {
       const { error } = await supabase
         .from('payments')
         .update({ status: 'disputed' } as any)
-        .eq('id', payment.id)
+        .eq('id' as any, payment.id as any)
       if (error) throw error
       await fetchBookings()
     } catch (err) {
@@ -291,6 +335,7 @@ export function MyBookings() {
     }
   }
 
+  // Can cancel if still pending or confirmed (before work has started)
   const canCancel = (b: BookingWithDetails) =>
     !['in_progress', 'completed', 'cancelled'].includes(b.status)
 
@@ -298,6 +343,13 @@ export function MyBookings() {
     b.payments && b.payments.length > 0
   const hasReview = (b: BookingWithDetails) =>
     b.reviews && b.reviews.length > 0
+
+  // Payment can be initiated when confirmed or in_progress (proper escrow: pay before work releases)
+  const canPay = (b: BookingWithDetails) =>
+    !isProvider &&
+    (b.status === 'confirmed' || b.status === 'in_progress' || b.status === 'completed') &&
+    !hasPayment(b) &&
+    (b.agreed_price ?? 0) > 0
 
   if (authLoading) {
     return (
@@ -357,7 +409,7 @@ export function MyBookings() {
         </p>
       </div>
 
-      {/* Status tabs */}
+      {/* Status tabs — cancelled before completed */}
       <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-4">
         {STATUS_TABS.map((tab) => (
           <button
@@ -523,7 +575,7 @@ export function MyBookings() {
                                 }}
                                 loading={actionLoading === booking.id}
                               >
-                                Cancel
+                                Decline
                               </Button>
                             </>
                           )}
@@ -556,53 +608,70 @@ export function MyBookings() {
                         </>
                       )}
 
-                      {/* Customer actions */}
-                      {!isProvider && booking.status === 'completed' && (
-                        <>
-                          {!hasReview(booking) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              icon={<Star className="size-4" />}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setReviewModal(booking)
-                              }}
-                            >
-                              Leave Review
-                            </Button>
-                          )}
-                          {!hasPayment(booking) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              icon={<Wallet className="size-4" />}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openPaymentModal(booking)
-                              }}
-                            >
-                              Pay from Wallet
-                            </Button>
-                          )}
-                        </>
+                      {/* Customer: edit pending booking */}
+                      {!isProvider && booking.status === 'pending' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<Edit2 className="size-4" />}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEditModal(booking)
+                          }}
+                        >
+                          Edit Details
+                        </Button>
+                      )}
+
+                      {/* Customer: pay from wallet (available from confirmed onwards) */}
+                      {canPay(booking) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<Wallet className="size-4" />}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openPaymentModal(booking)
+                          }}
+                        >
+                          Pay from Wallet
+                        </Button>
+                      )}
+
+                      {/* Customer: leave review after completion */}
+                      {!isProvider && booking.status === 'completed' && !hasReview(booking) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<Star className="size-4" />}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setReviewModal(booking)
+                          }}
+                        >
+                          Leave Review
+                        </Button>
                       )}
 
                       {/* Escrow actions */}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'held' && (
                         <div className="flex w-full flex-col gap-2 border-t border-gray-200 pt-3">
                           <div className="flex items-center gap-2">
+                            <ShieldCheck className="size-4 text-blue-500" />
                             <Badge variant="info">
                               {PAYMENT_STATUS_CONFIG.held.label}
                             </Badge>
                             <span className="text-sm text-gray-500">
-                              {formatCurrency(booking.agreed_price ?? 0)} held in escrow
+                              {formatCurrency(booking.agreed_price ?? 0)} secured in escrow
                             </span>
                           </div>
+                          <p className="text-xs text-gray-400">
+                            Funds are held securely. Once both parties confirm satisfaction the payment is released to the provider.
+                          </p>
                           <div className="flex items-center gap-2 text-sm text-gray-500">
-                            <span>Customer: {booking.payments[0].customer_confirmed ? 'Confirmed' : 'Pending'}</span>
+                            <span>Customer: {booking.payments[0].customer_confirmed ? '✓ Confirmed' : 'Pending'}</span>
                             <span>&bull;</span>
-                            <span>Provider: {booking.payments[0].provider_confirmed ? 'Confirmed' : 'Pending'}</span>
+                            <span>Provider: {booking.payments[0].provider_confirmed ? '✓ Confirmed' : 'Pending'}</span>
                           </div>
                           <div className="flex gap-2">
                             {!(isProvider ? booking.payments[0].provider_confirmed : booking.payments[0].customer_confirmed) && (
@@ -629,20 +698,20 @@ export function MyBookings() {
                               }}
                               loading={actionLoading === booking.id}
                             >
-                              Dispute
+                              Raise Dispute
                             </Button>
                           </div>
                         </div>
                       )}
 
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'released' && (
-                        <Badge variant="success">Payment Released</Badge>
+                        <Badge variant="success">Payment Released to Provider</Badge>
                       )}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'disputed' && (
                         <Badge variant="danger">Payment Disputed — Admin Reviewing</Badge>
                       )}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'refunded' && (
-                        <Badge variant="warning">Payment Refunded</Badge>
+                        <Badge variant="warning">Payment Refunded to Customer</Badge>
                       )}
 
                       {/* Cancel (before in_progress) */}
@@ -658,7 +727,7 @@ export function MyBookings() {
                           }}
                           loading={actionLoading === booking.id}
                         >
-                          Cancel
+                          Cancel Booking
                         </Button>
                       )}
 
@@ -679,8 +748,8 @@ export function MyBookings() {
                           const { data: existing } = await supabase
                             .from('conversations')
                             .select('id')
-                            .eq('participant_1', p1)
-                            .eq('participant_2', p2)
+                            .eq('participant_1' as any, p1 as any)
+                            .eq('participant_2' as any, p2 as any)
                             .maybeSingle()
                           const existingId = (existing as { id: string } | null)?.id
                           if (existingId) {
@@ -689,7 +758,7 @@ export function MyBookings() {
                           }
                           const { data: inserted, error } = await supabase
                             .from('conversations')
-                            .insert({ participant_1: p1, participant_2: p2 })
+                            .insert({ participant_1: p1, participant_2: p2 } as any)
                             .select('id')
                             .single()
                           const insertedId = (inserted as { id: string } | null)?.id
@@ -708,6 +777,70 @@ export function MyBookings() {
           })}
         </div>
       )}
+
+      {/* Edit Booking Modal — for customers with pending bookings */}
+      <Modal
+        isOpen={!!editModal}
+        onClose={() => setEditModal(null)}
+        title="Edit Booking Details"
+        size="md"
+      >
+        {editModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Update the details for your pending booking. The provider will see your changes.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Preferred Date"
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+              />
+              <Input
+                label="Preferred Time"
+                type="time"
+                value={editTime}
+                onChange={(e) => setEditTime(e.target.value)}
+              />
+            </div>
+            <Input
+              label="Location / Address"
+              value={editAddress}
+              onChange={(e) => setEditAddress(e.target.value)}
+              placeholder="e.g. 123 Main St, Gaborone"
+            />
+            <Input
+              label="Agreed Price (BWP)"
+              type="number"
+              min="0"
+              step="0.01"
+              value={editPrice}
+              onChange={(e) => setEditPrice(e.target.value)}
+              placeholder="0.00"
+            />
+            <Textarea
+              label="Notes"
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Any additional details for the provider..."
+              rows={3}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={submitEdit}
+                loading={actionLoading === editModal.id}
+                icon={<Check className="size-4" />}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Review Modal */}
       <Modal
@@ -785,7 +918,12 @@ export function MyBookings() {
             )}
 
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
-              <strong>Escrow protection:</strong> The amount is deducted from your wallet and held securely. Once both you and the provider confirm satisfaction, it's released to the provider.
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="size-4 mt-0.5 shrink-0" />
+                <div>
+                  <strong>Escrow protection:</strong> The amount is deducted from your wallet and held securely by QuickConnect. Once both you and the provider confirm the work is complete and satisfactory, funds are released to the provider. If there is a dispute, an admin will review and resolve it.
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2">

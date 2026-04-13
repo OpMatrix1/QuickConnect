@@ -24,4 +24,5 @@ export const ROUTES = {
   ADMIN_REPORTS: '/admin/reports',
   ADMIN_CATEGORIES: '/admin/categories',
   WALLET: '/wallet',
+  QUOTES: '/quotes',
 } as const

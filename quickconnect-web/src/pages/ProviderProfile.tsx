@@ -10,6 +10,9 @@ import {
   Edit3,
   AlertCircle,
   ShieldCheck,
+  Flag,
+  Briefcase,
+  Send,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
@@ -31,6 +34,10 @@ import {
   StarRating,
   Spinner,
   EmptyState,
+  Modal,
+  Input,
+  Textarea,
+  Select,
 } from '@/components/ui'
 
 type TabId = 'services' | 'reviews' | 'about'
@@ -45,6 +52,15 @@ interface ReviewWithProfile extends Review {
   profiles: Profile
 }
 
+const REPORT_REASONS = [
+  { value: 'spam', label: 'Spam or irrelevant content' },
+  { value: 'harassment', label: 'Harassment or abusive behaviour' },
+  { value: 'fraud', label: 'Fraud or scam' },
+  { value: 'inappropriate_content', label: 'Inappropriate content' },
+  { value: 'fake_profile', label: 'Fake or impersonation profile' },
+  { value: 'other', label: 'Other' },
+]
+
 export function ProviderProfile() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -52,9 +68,28 @@ export function ProviderProfile() {
   const [activeTab, setActiveTab] = useState<TabId>('services')
   const [provider, setProvider] = useState<ProviderWithDetails | null>(null)
   const [reviews, setReviews] = useState<ReviewWithProfile[]>([])
+  const [completedJobs, setCompletedJobs] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [contactLoading, setContactLoading] = useState(false)
+
+  // Quote request modal state
+  const [quoteModal, setQuoteModal] = useState(false)
+  const [quoteDescription, setQuoteDescription] = useState('')
+  const [quoteBudgetMin, setQuoteBudgetMin] = useState('')
+  const [quoteBudgetMax, setQuoteBudgetMax] = useState('')
+  const [quoteMessage, setQuoteMessage] = useState('')
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const [quoteSuccess, setQuoteSuccess] = useState(false)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
+
+  // Report modal state
+  const [reportModal, setReportModal] = useState(false)
+  const [reportReason, setReportReason] = useState('spam')
+  const [reportDescription, setReportDescription] = useState('')
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportSuccess, setReportSuccess] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
 
   const isOwnProfile =
     user &&
@@ -81,13 +116,21 @@ export function ProviderProfile() {
             service_areas(*)
           `
           )
-          .eq('id', id)
+          .eq('id' as any, id as any)
           .single()
 
         if (fetchError) throw fetchError
         if (!data) throw new Error('Provider not found')
 
         setProvider(data as unknown as ProviderWithDetails)
+
+        // Fetch completed jobs count
+        const { count } = await supabase
+          .from('bookings')
+          .select('id', { count: 'exact', head: true })
+          .eq('provider_id' as any, id as any)
+          .eq('status' as any, 'completed' as any)
+        setCompletedJobs(count ?? 0)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load provider')
         setProvider(null)
@@ -106,10 +149,10 @@ export function ProviderProfile() {
       const { data } = await supabase
         .from('reviews')
         .select('*, profiles(*)')
-        .eq('provider_id', provider.id)
+        .eq('provider_id' as any, provider.id as any)
         .order('created_at', { ascending: false })
 
-      setReviews((data ?? []) as ReviewWithProfile[])
+      setReviews((data ?? []) as unknown as ReviewWithProfile[])
     }
 
     fetchReviews()
@@ -129,8 +172,8 @@ export function ProviderProfile() {
       const { data: existing } = await supabase
         .from('conversations')
         .select('id')
-        .eq('participant_1', p1)
-        .eq('participant_2', p2)
+        .eq('participant_1' as any, p1 as any)
+        .eq('participant_2' as any, p2 as any)
         .maybeSingle()
 
       const existingId = (existing as { id: string } | null)?.id
@@ -144,7 +187,7 @@ export function ProviderProfile() {
         .insert({
           participant_1: p1,
           participant_2: p2,
-        })
+        } as any)
         .select('id')
         .single()
 
@@ -160,8 +203,57 @@ export function ProviderProfile() {
     }
   }
 
-  const handleRequestQuote = () => {
-    navigate(ROUTES.LOOKING_FOR)
+  const handleSubmitQuote = async () => {
+    if (!user || !provider || !quoteDescription.trim()) return
+    setQuoteLoading(true)
+    setQuoteError(null)
+    try {
+      const { error } = await supabase.from('quotes').insert({
+        customer_id: user.id,
+        provider_id: provider.id,
+        service_description: quoteDescription.trim(),
+        budget_min: quoteBudgetMin ? parseFloat(quoteBudgetMin) : null,
+        budget_max: quoteBudgetMax ? parseFloat(quoteBudgetMax) : null,
+        customer_message: quoteMessage.trim() || null,
+      } as any)
+      if (error) throw error
+      setQuoteSuccess(true)
+      setQuoteDescription('')
+      setQuoteBudgetMin('')
+      setQuoteBudgetMax('')
+      setQuoteMessage('')
+    } catch (err) {
+      setQuoteError(err instanceof Error ? err.message : 'Failed to send quote request')
+    } finally {
+      setQuoteLoading(false)
+    }
+  }
+
+  const handleSubmitReport = async () => {
+    if (!user || !provider) return
+    setReportLoading(true)
+    setReportError(null)
+    try {
+      const { error } = await supabase.from('reports').insert({
+        reporter_id: user.id,
+        reported_user_id: provider.profile_id,
+        reason: reportReason,
+        description: reportDescription.trim() || null,
+      } as any)
+      if (error) {
+        if (error.code === '23505') {
+          throw new Error('You have already submitted a report for this user.')
+        }
+        throw error
+      }
+      setReportSuccess(true)
+      setReportDescription('')
+      setReportReason('spam')
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : 'Failed to submit report')
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   if (loading) {
@@ -236,6 +328,12 @@ export function ProviderProfile() {
                     ({provider.review_count} reviews)
                   </span>
                 </div>
+                {/* Total completed jobs */}
+                <div className="flex items-center gap-1.5 text-gray-600">
+                  <Briefcase className="size-4 shrink-0" />
+                  <span className="font-medium text-gray-700">{completedJobs}</span>
+                  <span>jobs completed</span>
+                </div>
                 {provider.profiles?.city && (
                   <div className="flex items-center gap-1.5 text-gray-600">
                     <MapPin className="size-4 shrink-0" />
@@ -256,7 +354,7 @@ export function ProviderProfile() {
                 )}
               </div>
               {!isOwnProfile && user && (
-                <div className="mt-6 flex flex-wrap gap-3">
+                <div className="mt-6 flex flex-wrap items-center gap-3">
                   <Button
                     icon={<MessageCircle className="size-4" />}
                     onClick={handleContactProvider}
@@ -267,12 +365,29 @@ export function ProviderProfile() {
                   {profile?.role === 'customer' && (
                     <Button
                       variant="outline"
-                      icon={<FileText className="size-4" />}
-                      onClick={handleRequestQuote}
+                      icon={<Send className="size-4" />}
+                      onClick={() => {
+                        setQuoteSuccess(false)
+                        setQuoteError(null)
+                        setQuoteModal(true)
+                      }}
                     >
                       Request Quote
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Flag className="size-4" />}
+                    className="text-gray-500 hover:text-danger-600 hover:bg-danger-50 ml-auto"
+                    onClick={() => {
+                      setReportSuccess(false)
+                      setReportError(null)
+                      setReportModal(true)
+                    }}
+                  >
+                    Report
+                  </Button>
                 </div>
               )}
               {!user && (
@@ -429,6 +544,140 @@ export function ProviderProfile() {
           )}
         </div>
       </div>
+
+      {/* Request Quote Modal */}
+      <Modal
+        isOpen={quoteModal}
+        onClose={() => setQuoteModal(false)}
+        title="Request a Quote"
+        size="md"
+      >
+        {quoteSuccess ? (
+          <div className="space-y-4 text-center py-4">
+            <div className="flex size-16 items-center justify-center rounded-full bg-success-100 mx-auto">
+              <CheckCircle2 className="size-8 text-success-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Quote Request Sent!</h3>
+            <p className="text-sm text-gray-600">
+              {provider.business_name} will review your request and send you a quote. You can track it in{' '}
+              <Link to={ROUTES.QUOTES} className="text-primary-600 underline font-medium">My Quotes</Link>.
+            </p>
+            <Button onClick={() => setQuoteModal(false)}>Done</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Describe what you need and your budget. <strong>{provider.business_name}</strong> will respond with a price and timeline.
+            </p>
+            {quoteError && (
+              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">{quoteError}</div>
+            )}
+            <Textarea
+              label="What do you need? *"
+              value={quoteDescription}
+              onChange={(e) => setQuoteDescription(e.target.value)}
+              placeholder="e.g. Fix a leaking tap in the kitchen and bathroom..."
+              rows={3}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Budget Min (BWP)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={quoteBudgetMin}
+                onChange={(e) => setQuoteBudgetMin(e.target.value)}
+                placeholder="0.00"
+              />
+              <Input
+                label="Budget Max (BWP)"
+                type="number"
+                min="0"
+                step="0.01"
+                value={quoteBudgetMax}
+                onChange={(e) => setQuoteBudgetMax(e.target.value)}
+                placeholder="0.00"
+              />
+            </div>
+            <Textarea
+              label="Additional message (optional)"
+              value={quoteMessage}
+              onChange={(e) => setQuoteMessage(e.target.value)}
+              placeholder="Any extra details, preferred timing, etc."
+              rows={2}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setQuoteModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmitQuote}
+                loading={quoteLoading}
+                disabled={!quoteDescription.trim()}
+                icon={<Send className="size-4" />}
+              >
+                Send Request
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Report Modal */}
+      <Modal
+        isOpen={reportModal}
+        onClose={() => setReportModal(false)}
+        title="Report this provider"
+        size="sm"
+      >
+        {reportSuccess ? (
+          <div className="space-y-4 text-center py-4">
+            <div className="flex size-16 items-center justify-center rounded-full bg-success-100 mx-auto">
+              <CheckCircle2 className="size-8 text-success-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900">Report Submitted</h3>
+            <p className="text-sm text-gray-600">
+              Thank you. Our team will review this report and take appropriate action.
+            </p>
+            <Button onClick={() => setReportModal(false)}>Done</Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Help keep QuickConnect safe. Reports are confidential and reviewed by our team.
+            </p>
+            {reportError && (
+              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">{reportError}</div>
+            )}
+            <Select
+              label="Reason"
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              options={REPORT_REASONS}
+            />
+            <Textarea
+              label="Additional details (optional)"
+              value={reportDescription}
+              onChange={(e) => setReportDescription(e.target.value)}
+              placeholder="Please provide any additional context..."
+              rows={3}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setReportModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleSubmitReport}
+                loading={reportLoading}
+                icon={<Flag className="size-4" />}
+              >
+                Submit Report
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

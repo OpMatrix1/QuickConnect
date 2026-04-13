@@ -1,7 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import {
   Home as HomeIcon, FileText, Users, CalendarCheck,
-  Wallet, User, LayoutDashboard, ShieldCheck, MessageCircle,
+  Wallet, User, LayoutDashboard, ShieldCheck, MessageCircle, ClipboardList,
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { ROUTES } from '@/lib/constants'
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { to: ROUTES.LOOKING_FOR, icon: FileText,        label: 'Looking For',      always: true },
   { to: ROUTES.PROVIDERS,   icon: Users,           label: 'Browse Providers', always: true },
   { to: ROUTES.MY_BOOKINGS, icon: CalendarCheck,   label: 'My Bookings',      always: false },
+  { to: ROUTES.QUOTES,      icon: ClipboardList,   label: 'Quotes',           always: false },
   { to: ROUTES.CHAT,        icon: MessageCircle,   label: 'Messages',         always: false },
   { to: ROUTES.WALLET,      icon: Wallet,          label: 'Wallet',           always: false },
   { to: ROUTES.PROFILE,     icon: User,            label: 'Profile',          always: false },

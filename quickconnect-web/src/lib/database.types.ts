@@ -797,6 +797,125 @@ export type Database = {
           }
         ]
       }
+      quotes: {
+        Row: {
+          id: string
+          customer_id: string
+          provider_id: string
+          service_description: string
+          budget_min: number | null
+          budget_max: number | null
+          customer_message: string | null
+          quoted_amount: number | null
+          provider_message: string | null
+          status: 'requested' | 'quoted' | 'accepted' | 'rejected' | 'expired'
+          booking_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id: string
+          provider_id: string
+          service_description: string
+          budget_min?: number | null
+          budget_max?: number | null
+          customer_message?: string | null
+          quoted_amount?: number | null
+          provider_message?: string | null
+          status?: 'requested' | 'quoted' | 'accepted' | 'rejected' | 'expired'
+          booking_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string
+          provider_id?: string
+          service_description?: string
+          budget_min?: number | null
+          budget_max?: number | null
+          customer_message?: string | null
+          quoted_amount?: number | null
+          provider_message?: string | null
+          status?: 'requested' | 'quoted' | 'accepted' | 'rejected' | 'expired'
+          booking_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quotes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "service_providers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quotes_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      reports: {
+        Row: {
+          id: string
+          reporter_id: string
+          reported_user_id: string
+          reason: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'fake_profile' | 'other'
+          description: string | null
+          status: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          reporter_id: string
+          reported_user_id: string
+          reason: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'fake_profile' | 'other'
+          description?: string | null
+          status?: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          reporter_id?: string
+          reported_user_id?: string
+          reason?: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'fake_profile' | 'other'
+          description?: string | null
+          status?: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_reported_user_id_fkey"
+            columns: ["reported_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
