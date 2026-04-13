@@ -15,6 +15,7 @@ export type Database = {
           location: unknown | null
           email_verified: boolean
           is_active: boolean
+          two_fa_enabled: boolean
           created_at: string
           updated_at: string
         }
@@ -29,6 +30,7 @@ export type Database = {
           location?: unknown | null
           email_verified?: boolean
           is_active?: boolean
+          two_fa_enabled?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -43,6 +45,7 @@ export type Database = {
           location?: unknown | null
           email_verified?: boolean
           is_active?: boolean
+          two_fa_enabled?: boolean
           updated_at?: string
         }
         Relationships: [

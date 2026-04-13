@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import type { Profile, ProfileUpdate } from '@/lib/types'
@@ -57,18 +57,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, profile }))
   }, [state.user, fetchProfile])
 
+  const fetchProfileRef = useRef(fetchProfile)
+  fetchProfileRef.current = fetchProfile
+
   useEffect(() => {
-    // Force loading to false after 5 seconds no matter what
     const timeout = setTimeout(() => {
       setState((prev) => prev.loading ? { ...prev, loading: false } : prev)
     }, 5000)
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)
       if (session?.user) {
-        fetchProfile(session.user.id).then((profile) => {
-          setState({ user: session.user, session, profile, loading: false })
-        })
+        const profile = await fetchProfileRef.current(session.user.id)
+        setState({ user: session.user, session, profile, loading: false })
       } else {
         setState({ user: null, session: null, profile: null, loading: false })
       }
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         if (session?.user) {
-          const profile = await fetchProfile(session.user.id)
+          const profile = await fetchProfileRef.current(session.user.id)
           setState({ user: session.user, session, profile, loading: false })
         } else {
           setState({ user: null, session: null, profile: null, loading: false })
@@ -92,7 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeout)
       subscription.unsubscribe()
     }
-  }, [fetchProfile])
+  }, [])
 
   const signUp = async (email: string, password: string, fullName: string, role: 'customer' | 'provider', businessName?: string) => {
     try {
@@ -107,13 +108,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: null }
     } catch (err) {
       if (err instanceof Error && err.message === 'Request timed out') {
-        return { error: 'Request timed out. The server may be unavailable — please try again shortly.' }
+        return { error: 'Request timed out. Please try again shortly.' }
       }
       return { error: 'Unable to connect to server. Please try again.' }
     }
   }
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string): Promise<{ error: string | null }> => {
     try {
       const { error } = await withTimeout(
         supabase.auth.signInWithPassword({ email, password })
@@ -122,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: null }
     } catch (err) {
       if (err instanceof Error && err.message === 'Request timed out') {
-        return { error: 'Request timed out. The server may be unavailable — please try again shortly.' }
+        return { error: 'Request timed out. Please try again shortly.' }
       }
       return { error: 'Unable to connect to server. Please try again.' }
     }

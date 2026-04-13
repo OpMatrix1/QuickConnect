@@ -10,14 +10,14 @@ export function Login() {
   const location = useLocation()
   const { signIn, user, loading: authLoading } = useAuth()
   const successMessage = (location.state as { message?: string } | null)?.message
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+  const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Redirect when auth state has a logged-in user
   useEffect(() => {
     if (!authLoading && user) {
       navigate(ROUTES.HOME, { replace: true })
@@ -39,20 +39,14 @@ export function Login() {
     } else if (password.length < 6) {
       errs.password = 'Password must be at least 6 characters'
     }
-    if (Object.keys(errs).length > 0) {
-      setFieldErrors(errs)
-      return
-    }
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return }
     setFieldErrors({})
-
     setSubmitting(true)
+
     try {
       const { error: signInError } = await signIn(email, password)
-      if (signInError) {
-        setError(signInError)
-      }
-      // Navigation handled by useEffect when auth state updates
-    } catch (err) {
+      if (signInError) setError(signInError)
+    } catch {
       setError('Unable to connect. Please check your internet and try again.')
     } finally {
       setSubmitting(false)
@@ -75,21 +69,21 @@ export function Login() {
             <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">
               Welcome back
             </h1>
-            <p className="mt-2 text-gray-600">
-              Sign in to your account to continue
-            </p>
+            <p className="mt-2 text-gray-600">Sign in to your account to continue</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="animate-fade-up mt-8 space-y-6" style={{ animationDelay: '160ms' }}>
+          <form
+            onSubmit={handleSubmit}
+            className="animate-fade-up mt-8 space-y-6"
+            style={{ animationDelay: '160ms' }}
+          >
             {successMessage && (
               <div className="rounded-lg bg-success-50 p-4 text-sm text-success-600">
                 {successMessage}
               </div>
             )}
             {error && (
-              <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">
-                {error}
-              </div>
+              <div className="rounded-lg bg-danger-50 p-4 text-sm text-danger-600">{error}</div>
             )}
 
             <div>
@@ -146,10 +140,7 @@ export function Login() {
                 />
                 <span className="text-sm text-gray-600">Remember me</span>
               </label>
-              <a
-                href="#"
-                className="text-sm font-medium text-primary-600 hover:text-primary-700"
-              >
+              <a href="#" className="text-sm font-medium text-primary-600 hover:text-primary-700">
                 Forgot password?
               </a>
             </div>
@@ -167,16 +158,12 @@ export function Login() {
 
           <p className="mt-6 text-center text-sm text-gray-600">
             Don&apos;t have an account?{' '}
-            <Link
-              to={ROUTES.REGISTER}
-              className="font-medium text-primary-600 hover:text-primary-700"
-            >
+            <Link to={ROUTES.REGISTER} className="font-medium text-primary-600 hover:text-primary-700">
               Sign up
             </Link>
           </p>
         </div>
       </div>
-
     </div>
   )
 }

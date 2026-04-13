@@ -612,6 +612,7 @@ export function Profile() {
           </Button>
         </CardFooter>
       </Card>
+
     </div>
   )
 }

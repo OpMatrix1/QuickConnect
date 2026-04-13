@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Reveal } from '@/components/ui/Reveal'
 import {
@@ -30,9 +30,20 @@ import {
   MessageCircle,
   ArrowRight,
   ChevronRight,
+  MapPin,
+  X,
 } from 'lucide-react'
 import { ROUTES, APP_NAME } from '@/lib/constants'
-import { SERVICE_CATEGORIES } from '@/lib/utils'
+import { SERVICE_CATEGORIES, truncate } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import type { Profile, ServiceProvider, Service, ServiceCategory } from '@/lib/types'
+import { Avatar, StarRating, Badge, Spinner } from '@/components/ui'
+import { useAuth } from '@/context/AuthContext'
+
+interface ProviderWithDetails extends ServiceProvider {
+  profiles: Profile
+  services: (Service & { service_categories: ServiceCategory | null })[]
+}
 
 const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   Plumbing: Wrench,
@@ -57,27 +68,27 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
   'Tailoring & Fashion': Shirt,
 }
 
-const CATEGORY_COLORS: Record<string, { bg: string; icon: string }> = {
-  Plumbing:                  { bg: 'bg-blue-50',   icon: 'text-blue-600' },
-  Electrical:                { bg: 'bg-yellow-50', icon: 'text-yellow-600' },
-  Cleaning:                  { bg: 'bg-cyan-50',   icon: 'text-cyan-600' },
-  Painting:                  { bg: 'bg-pink-50',   icon: 'text-pink-600' },
-  Carpentry:                 { bg: 'bg-orange-50', icon: 'text-orange-600' },
-  'Gardening & Landscaping': { bg: 'bg-green-50',  icon: 'text-green-600' },
-  'Moving & Transport':      { bg: 'bg-indigo-50', icon: 'text-indigo-600' },
-  'Tutoring & Education':    { bg: 'bg-violet-50', icon: 'text-violet-600' },
-  Photography:               { bg: 'bg-rose-50',   icon: 'text-rose-600' },
-  Catering:                  { bg: 'bg-amber-50',  icon: 'text-amber-600' },
-  'Beauty & Salon':          { bg: 'bg-fuchsia-50',icon: 'text-fuchsia-600' },
-  'Auto Repair & Mechanic':  { bg: 'bg-slate-50',  icon: 'text-slate-600' },
-  'IT & Computer Repair':    { bg: 'bg-sky-50',    icon: 'text-sky-600' },
-  Construction:              { bg: 'bg-stone-50',  icon: 'text-stone-600' },
-  Welding:                   { bg: 'bg-red-50',    icon: 'text-red-600' },
-  Tiling:                    { bg: 'bg-teal-50',   icon: 'text-teal-600' },
-  'Air Conditioning & HVAC': { bg: 'bg-cyan-50',   icon: 'text-cyan-600' },
-  'Security Services':       { bg: 'bg-gray-50',   icon: 'text-gray-600' },
-  'Event Planning':          { bg: 'bg-lime-50',   icon: 'text-lime-600' },
-  'Tailoring & Fashion':     { bg: 'bg-purple-50', icon: 'text-purple-600' },
+const CATEGORY_COLORS: Record<string, { bg: string; icon: string; selected: string }> = {
+  Plumbing:                  { bg: 'bg-blue-50',    icon: 'text-blue-600',    selected: 'bg-blue-100 border-blue-400' },
+  Electrical:                { bg: 'bg-yellow-50',  icon: 'text-yellow-600',  selected: 'bg-yellow-100 border-yellow-400' },
+  Cleaning:                  { bg: 'bg-cyan-50',    icon: 'text-cyan-600',    selected: 'bg-cyan-100 border-cyan-400' },
+  Painting:                  { bg: 'bg-pink-50',    icon: 'text-pink-600',    selected: 'bg-pink-100 border-pink-400' },
+  Carpentry:                 { bg: 'bg-orange-50',  icon: 'text-orange-600',  selected: 'bg-orange-100 border-orange-400' },
+  'Gardening & Landscaping': { bg: 'bg-green-50',   icon: 'text-green-600',   selected: 'bg-green-100 border-green-400' },
+  'Moving & Transport':      { bg: 'bg-indigo-50',  icon: 'text-indigo-600',  selected: 'bg-indigo-100 border-indigo-400' },
+  'Tutoring & Education':    { bg: 'bg-violet-50',  icon: 'text-violet-600',  selected: 'bg-violet-100 border-violet-400' },
+  Photography:               { bg: 'bg-rose-50',    icon: 'text-rose-600',    selected: 'bg-rose-100 border-rose-400' },
+  Catering:                  { bg: 'bg-amber-50',   icon: 'text-amber-600',   selected: 'bg-amber-100 border-amber-400' },
+  'Beauty & Salon':          { bg: 'bg-fuchsia-50', icon: 'text-fuchsia-600', selected: 'bg-fuchsia-100 border-fuchsia-400' },
+  'Auto Repair & Mechanic':  { bg: 'bg-slate-50',   icon: 'text-slate-600',   selected: 'bg-slate-100 border-slate-400' },
+  'IT & Computer Repair':    { bg: 'bg-sky-50',     icon: 'text-sky-600',     selected: 'bg-sky-100 border-sky-400' },
+  Construction:              { bg: 'bg-stone-50',   icon: 'text-stone-600',   selected: 'bg-stone-100 border-stone-400' },
+  Welding:                   { bg: 'bg-red-50',     icon: 'text-red-600',     selected: 'bg-red-100 border-red-400' },
+  Tiling:                    { bg: 'bg-teal-50',    icon: 'text-teal-600',    selected: 'bg-teal-100 border-teal-400' },
+  'Air Conditioning & HVAC': { bg: 'bg-cyan-50',    icon: 'text-cyan-600',    selected: 'bg-cyan-100 border-cyan-400' },
+  'Security Services':       { bg: 'bg-gray-50',    icon: 'text-gray-600',    selected: 'bg-gray-100 border-gray-400' },
+  'Event Planning':          { bg: 'bg-lime-50',    icon: 'text-lime-600',    selected: 'bg-lime-100 border-lime-400' },
+  'Tailoring & Fashion':     { bg: 'bg-purple-50',  icon: 'text-purple-600',  selected: 'bg-purple-100 border-purple-400' },
 }
 
 const POPULAR_SEARCHES = [
@@ -91,13 +102,54 @@ const POPULAR_SEARCHES = [
 
 export function Home() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [categoryProviders, setCategoryProviders] = useState<ProviderWithDetails[]>([])
+  const [loadingProviders, setLoadingProviders] = useState(false)
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = searchQuery.trim()
     if (q) navigate(`${ROUTES.PROVIDERS}?q=${encodeURIComponent(q)}`)
   }
+
+  const handleCategoryClick = (category: string) => {
+    if (selectedCategory === category) {
+      setSelectedCategory(null)
+      setCategoryProviders([])
+      return
+    }
+    setSelectedCategory(category)
+  }
+
+  useEffect(() => {
+    if (!selectedCategory) return
+
+    let cancelled = false
+    setLoadingProviders(true)
+    setCategoryProviders([])
+
+    supabase
+      .from('service_providers')
+      .select(
+        `*, profiles(*), services(id, title, price_min, price_max, price_type, service_categories(name))`
+      )
+      .order('rating_avg', { ascending: false })
+      .then(({ data }) => {
+        if (cancelled) return
+        const all = (data ?? []) as unknown as ProviderWithDetails[]
+        const filtered = all.filter((p) =>
+          p.services?.some(
+            (s) => s.service_categories?.name?.toLowerCase() === selectedCategory.toLowerCase()
+          )
+        )
+        setCategoryProviders(filtered.slice(0, 6))
+        setLoadingProviders(false)
+      })
+
+    return () => { cancelled = true }
+  }, [selectedCategory])
 
   return (
     <div>
@@ -175,7 +227,7 @@ export function Home() {
           <div>
             <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">Popular Categories</h2>
             <p className="mt-1 text-gray-500 text-sm">
-              Browse all 20 service types available across Botswana
+              Browse all {SERVICE_CATEGORIES.length} service types available across Botswana
             </p>
           </div>
           <Link
@@ -187,49 +239,123 @@ export function Home() {
         </Reveal>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {SERVICE_CATEGORIES.slice(0, 10).map((category, i) => {
+          {SERVICE_CATEGORIES.map((category, i) => {
             const Icon = CATEGORY_ICONS[category] ?? Wrench
-            const color = CATEGORY_COLORS[category] ?? { bg: 'bg-gray-50', icon: 'text-gray-600' }
+            const c = CATEGORY_COLORS[category] ?? { bg: 'bg-gray-50', icon: 'text-gray-600', selected: 'bg-gray-100 border-gray-400' }
+            const isSelected = selectedCategory === category
             return (
-              <Reveal key={category} delay={i * 55}>
-                <Link
-                  to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
-                  className="press-feedback group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 hover:-translate-y-1 transition-all duration-200"
+              <Reveal key={category} delay={i * 40}>
+                <button
+                  onClick={() => handleCategoryClick(category)}
+                  className={`press-feedback group w-full flex flex-col items-center gap-3 rounded-2xl border p-5 text-center shadow-sm transition-all duration-200 ${
+                    isSelected
+                      ? `${c.selected} shadow-md -translate-y-1`
+                      : 'border-gray-100 bg-white hover:shadow-md hover:border-primary-200 hover:-translate-y-1'
+                  }`}
                 >
-                  <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
+                  <span className={`flex size-12 items-center justify-center rounded-xl ${c.bg} ${c.icon} group-hover:scale-110 transition-transform`}>
                     <Icon className="size-6" />
                   </span>
-                  <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
+                  <span className={`text-xs font-medium leading-tight transition-colors ${isSelected ? 'text-gray-900 font-semibold' : 'text-gray-700 group-hover:text-primary-600'}`}>
                     {category}
                   </span>
-                </Link>
+                </button>
               </Reveal>
             )
           })}
         </div>
 
-        {/* All categories grid - second row */}
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {SERVICE_CATEGORIES.slice(10).map((category, i) => {
-            const Icon = CATEGORY_ICONS[category] ?? Wrench
-            const color = CATEGORY_COLORS[category] ?? { bg: 'bg-gray-50', icon: 'text-gray-600' }
-            return (
-              <Reveal key={category} delay={i * 55}>
+        {/* ── PROVIDERS IN SELECTED CATEGORY ─────────────── */}
+        {selectedCategory && (
+          <div className="mt-8 rounded-2xl border border-gray-100 bg-gray-50 p-6 animate-slide-down">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {selectedCategory} Providers
+                </h3>
+                {!loadingProviders && (
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    {categoryProviders.length === 0
+                      ? 'No providers found in this category yet'
+                      : `Showing top ${categoryProviders.length} providers`}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
                 <Link
-                  to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(category)}`}
-                  className="press-feedback group flex flex-col items-center gap-3 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm hover:shadow-md hover:border-primary-200 hover:-translate-y-1 transition-all duration-200"
+                  to={`${ROUTES.PROVIDERS}?category=${encodeURIComponent(selectedCategory)}`}
+                  className="flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700"
                 >
-                  <span className={`flex size-12 items-center justify-center rounded-xl ${color.bg} ${color.icon} group-hover:scale-110 transition-transform`}>
-                    <Icon className="size-6" />
-                  </span>
-                  <span className="text-xs font-medium text-gray-700 leading-tight group-hover:text-primary-600 transition-colors">
-                    {category}
-                  </span>
+                  See all <ChevronRight className="size-4" />
                 </Link>
-              </Reveal>
-            )
-          })}
-        </div>
+                <button
+                  onClick={() => { setSelectedCategory(null); setCategoryProviders([]) }}
+                  className="flex items-center justify-center size-7 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition-colors"
+                  aria-label="Close"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+
+            {loadingProviders ? (
+              <div className="flex justify-center py-10">
+                <Spinner size="lg" />
+              </div>
+            ) : categoryProviders.length === 0 ? (
+              <div className="text-center py-10">
+                <p className="text-gray-400 text-sm">No providers available in this category yet.</p>
+                <Link
+                  to={ROUTES.REGISTER}
+                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary-600 hover:text-primary-700"
+                >
+                  Be the first to offer {selectedCategory} <ArrowRight className="size-4" />
+                </Link>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {categoryProviders.map((provider) => (
+                  <Link
+                    key={provider.id}
+                    to={ROUTES.PROVIDER_PROFILE.replace(':id', provider.id)}
+                    className="press-feedback flex gap-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+                  >
+                    <Avatar
+                      src={provider.profiles?.avatar_url}
+                      fallback={provider.business_name}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-gray-900 text-sm truncate">
+                          {provider.business_name}
+                        </p>
+                        {provider.is_verified && (
+                          <Badge variant="success" className="shrink-0 text-xs">✓</Badge>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <StarRating rating={provider.rating_avg} size="sm" readonly />
+                        <span className="text-xs text-gray-500">({provider.review_count})</span>
+                      </div>
+                      {provider.profiles?.city && (
+                        <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                          <MapPin className="size-3 shrink-0" />
+                          {provider.profiles.city}
+                        </div>
+                      )}
+                      {provider.description && (
+                        <p className="mt-1 text-xs text-gray-500 line-clamp-1">
+                          {truncate(provider.description, 80)}
+                        </p>
+                      )}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* ── HOW IT WORKS ─────────────────────────────────── */}
@@ -384,13 +510,15 @@ export function Home() {
             Signing up is 100% free.
           </p>
           <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link
-              to={ROUTES.REGISTER}
-              className="press-feedback inline-flex items-center justify-center gap-2 rounded-full bg-highlight-300 px-8 py-3 text-sm font-semibold text-primary-900 hover:bg-highlight-400 transition-colors shadow-lg shadow-highlight-300/30"
-            >
-              Create a Free Account
-              <ArrowRight className="size-4" />
-            </Link>
+            {!user && (
+              <Link
+                to={ROUTES.REGISTER}
+                className="press-feedback inline-flex items-center justify-center gap-2 rounded-full bg-highlight-300 px-8 py-3 text-sm font-semibold text-primary-900 hover:bg-highlight-400 transition-colors shadow-lg shadow-highlight-300/30"
+              >
+                Create a Free Account
+                <ArrowRight className="size-4" />
+              </Link>
+            )}
             <Link
               to={ROUTES.LOOKING_FOR}
               className="press-feedback inline-flex items-center justify-center gap-2 rounded-full border border-white/30 bg-white/10 px-8 py-3 text-sm font-semibold text-white hover:bg-white/20 transition-colors backdrop-blur-sm"

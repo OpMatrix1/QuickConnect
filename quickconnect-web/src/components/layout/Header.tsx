@@ -10,10 +10,11 @@ import { useAuth } from '@/context/AuthContext'
 import { useNotifications } from '@/context/NotificationContext'
 
 const NAV_TABS = [
-  { to: ROUTES.HOME,        icon: HomeIcon,      label: 'Home' },
-  { to: ROUTES.LOOKING_FOR, icon: FileText,       label: 'Looking For' },
-  { to: ROUTES.PROVIDERS,   icon: Users,          label: 'Providers' },
-  { to: ROUTES.MY_BOOKINGS, icon: CalendarCheck,  label: 'My Bookings' },
+  { to: ROUTES.HOME,        icon: HomeIcon,        label: 'Home',        authOnly: false },
+  { to: ROUTES.LOOKING_FOR, icon: FileText,         label: 'Looking For', authOnly: false },
+  { to: ROUTES.PROVIDERS,   icon: Users,            label: 'Providers',   authOnly: false },
+  { to: ROUTES.MY_BOOKINGS, icon: CalendarCheck,    label: 'My Bookings', authOnly: false },
+  { to: ROUTES.DASHBOARD,   icon: LayoutDashboard,  label: 'Dashboard',   authOnly: true  },
 ]
 
 export function Header() {
@@ -98,7 +99,7 @@ export function Header() {
 
         {/* ── CENTER: Nav Tabs ─────────────────────────────── */}
         <nav className="hidden md:flex flex-1 items-center justify-center gap-1">
-          {NAV_TABS.map(({ to, icon: Icon, label }) => {
+          {NAV_TABS.filter(({ authOnly }) => !authOnly || !!user).map(({ to, icon: Icon, label }) => {
             const isActive = to === ROUTES.HOME
               ? pathname === '/'
               : pathname.startsWith(to)
