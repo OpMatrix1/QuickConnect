@@ -85,6 +85,45 @@ function getOtherPartyAvatar(b: BookingWithDetails, isProvider: boolean) {
   return b.service_providers?.profiles?.avatar_url
 }
 
+/** Nested `payments(...)` embeds often come back empty under RLS; merge from a direct query. */
+async function mergePaymentsIntoBookings(
+  rows: BookingWithDetails[]
+): Promise<BookingWithDetails[]> {
+  if (rows.length === 0) return rows
+  const ids = rows.map((b) => b.id)
+  const { data: payRows, error } = await supabase
+    .from('payments')
+    .select('id, booking_id, status, customer_confirmed, provider_confirmed')
+    .in('booking_id', ids)
+
+  if (error || !payRows?.length) return rows
+
+  const byBooking = new Map<string, NonNullable<BookingWithDetails['payments']>>()
+  for (const raw of payRows) {
+    const p = raw as {
+      id: string
+      booking_id: string
+      status: PaymentStatus
+      customer_confirmed: boolean
+      provider_confirmed: boolean
+    }
+    const row = {
+      id: p.id,
+      status: p.status,
+      customer_confirmed: p.customer_confirmed,
+      provider_confirmed: p.provider_confirmed,
+    }
+    const cur = byBooking.get(p.booking_id)
+    if (cur) cur.push(row)
+    else byBooking.set(p.booking_id, [row])
+  }
+
+  return rows.map((b) => {
+    const merged = byBooking.get(b.id)
+    return merged?.length ? { ...b, payments: merged } : b
+  })
+}
+
 export function MyBookings() {
   const navigate = useNavigate()
   const { user, profile, loading: authLoading } = useAuth()
@@ -148,7 +187,10 @@ export function MyBookings() {
           .order('created_at', { ascending: false })
 
         if (fetchError) throw fetchError
-        setBookings((data ?? []) as unknown as BookingWithDetails[])
+        const withPayments = await mergePaymentsIntoBookings(
+          (data ?? []) as unknown as BookingWithDetails[]
+        )
+        setBookings(withPayments)
       } else {
         setProviderIdForRealtime(null)
         const { data, error: fetchError } = await supabase
@@ -170,7 +212,10 @@ export function MyBookings() {
           .order('created_at', { ascending: false })
 
         if (fetchError) throw fetchError
-        setBookings((data ?? []) as unknown as BookingWithDetails[])
+        const withPayments = await mergePaymentsIntoBookings(
+          (data ?? []) as unknown as BookingWithDetails[]
+        )
+        setBookings(withPayments)
       }
     } catch (err) {
       if (!opts?.silent) {
@@ -318,7 +363,7 @@ export function MyBookings() {
       const { error } = await supabase.rpc('initiate_wallet_payment', {
         p_booking_id: paymentModal.id,
         p_amount: paymentModal.agreed_price ?? 0,
-      })
+      } as never)
       if (error) throw error
       setPaymentModal(null)
       await fetchBookings()
@@ -444,6 +489,9 @@ export function MyBookings() {
             ? 'Manage your service bookings and appointments'
             : 'Track your bookings and service requests'}
         </p>
+        <p className="mt-2 text-sm text-gray-500">
+          To confirm satisfaction and release escrow (or dispute), expand the relevant booking below — not on the Wallet page.
+        </p>
       </div>
 
       {/* Status tabs — cancelled before completed */}
@@ -473,7 +521,7 @@ export function MyBookings() {
           title="Something went wrong"
           description={error}
           action={
-            <Button variant="outline" onClick={fetchBookings}>
+            <Button variant="outline" onClick={() => void fetchBookings()}>
               Try again
             </Button>
           }
@@ -660,39 +708,9 @@ export function MyBookings() {
                         </Button>
                       )}
 
-                      {/* Customer: pay from wallet (available from confirmed onwards) */}
-                      {canPay(booking) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          icon={<Wallet className="size-4" />}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openPaymentModal(booking)
-                          }}
-                        >
-                          Pay from Wallet
-                        </Button>
-                      )}
-
-                      {/* Customer: leave review after completion */}
-                      {!isProvider && booking.status === 'completed' && !hasReview(booking) && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          icon={<Star className="size-4" />}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setReviewModal(booking)
-                          }}
-                        >
-                          Leave Review
-                        </Button>
-                      )}
-
-                      {/* Escrow actions */}
+                      {/* Escrow & payment outcome — show before pay/review so confirmation is visible */}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'held' && (
-                        <div className="flex w-full flex-col gap-2 border-t border-gray-200 pt-3">
+                        <div className="flex w-full basis-full flex-col gap-2 border-t border-gray-200 pt-3">
                           <div className="flex items-center gap-2">
                             <ShieldCheck className="size-4 text-blue-500" />
                             <Badge variant="info">
@@ -710,7 +728,7 @@ export function MyBookings() {
                             <span>&bull;</span>
                             <span>Provider: {booking.payments[0].provider_confirmed ? '✓ Confirmed' : 'Pending'}</span>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             {!(isProvider ? booking.payments[0].provider_confirmed : booking.payments[0].customer_confirmed) && (
                               <Button
                                 size="sm"
@@ -749,6 +767,36 @@ export function MyBookings() {
                       )}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'refunded' && (
                         <Badge variant="warning">Payment Refunded to Customer</Badge>
+                      )}
+
+                      {/* Customer: pay from wallet (available from confirmed onwards) */}
+                      {canPay(booking) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<Wallet className="size-4" />}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openPaymentModal(booking)
+                          }}
+                        >
+                          Pay from Wallet
+                        </Button>
+                      )}
+
+                      {/* Customer: leave review after completion */}
+                      {!isProvider && booking.status === 'completed' && !hasReview(booking) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<Star className="size-4" />}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setReviewModal(booking)
+                          }}
+                        >
+                          Leave Review
+                        </Button>
                       )}
 
                       {/* Cancel (before in_progress) */}
