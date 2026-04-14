@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { Reveal } from '@/components/ui/Reveal'
 import {
@@ -14,6 +14,7 @@ import {
   TrendingUp,
   FolderPlus,
   Send,
+  ClipboardList,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -67,6 +68,17 @@ export function Dashboard() {
   const [activePostsCount, setActivePostsCount] = useState(0)
   const [pendingBookingsCount, setPendingBookingsCount] = useState(0)
   const [completedBookingsCount, setCompletedBookingsCount] = useState(0)
+  const [customerQuotesToReviewCount, setCustomerQuotesToReviewCount] = useState(0)
+  const [customerAwaitingQuotesCount, setCustomerAwaitingQuotesCount] = useState(0)
+  const [customerQuotedQuotes, setCustomerQuotedQuotes] = useState<
+    {
+      id: string
+      service_description: string
+      created_at: string
+      quoted_amount: number | null
+      service_providers: { business_name: string | null } | null
+    }[]
+  >([])
 
   // Provider state
   const [providerData, setProviderData] = useState<ServiceProvider | null>(null)
@@ -83,6 +95,107 @@ export function Dashboard() {
   const [catReqSuccess, setCatReqSuccess] = useState(false)
   const [myRequests, setMyRequests] = useState<{ id: string; name: string; status: string; admin_feedback: string | null }[]>([])
   const [providerListingReady, setProviderListingReady] = useState(true)
+  const [providerPendingQuoteCount, setProviderPendingQuoteCount] = useState(0)
+  const [providerPendingQuotes, setProviderPendingQuotes] = useState<
+    {
+      id: string
+      service_description: string
+      created_at: string
+      profiles: { full_name: string | null } | null
+    }[]
+  >([])
+
+  const refreshCustomerQuotes = useCallback(async (customerId: string) => {
+    const { count: toReview } = await supabase
+      .from('quotes')
+      .select('*', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .eq('status', 'quoted')
+    setCustomerQuotesToReviewCount(toReview ?? 0)
+
+    const { count: awaitingQ } = await supabase
+      .from('quotes')
+      .select('*', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .eq('status', 'requested')
+    setCustomerAwaitingQuotesCount(awaitingQ ?? 0)
+
+    const { data: quotedList } = await supabase
+      .from('quotes')
+      .select(
+        `
+        id,
+        service_description,
+        created_at,
+        quoted_amount,
+        service_providers!quotes_provider_id_fkey(business_name)
+      `
+      )
+      .eq('customer_id', customerId)
+      .eq('status', 'quoted')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    setCustomerQuotedQuotes(
+      (quotedList ?? []).map((row) => {
+        const r = row as {
+          id: string
+          service_description: string
+          created_at: string
+          quoted_amount: number | null
+          service_providers: { business_name: string | null } | null
+        }
+        return {
+          id: r.id,
+          service_description: r.service_description,
+          created_at: r.created_at,
+          quoted_amount: r.quoted_amount,
+          service_providers: r.service_providers,
+        }
+      })
+    )
+  }, [])
+
+  const refreshProviderQuotes = useCallback(async (providerId: string) => {
+    const { count: pendingQuoteReq } = await supabase
+      .from('quotes')
+      .select('*', { count: 'exact', head: true })
+      .eq('provider_id', providerId)
+      .eq('status', 'requested')
+    setProviderPendingQuoteCount(pendingQuoteReq ?? 0)
+
+    const { data: pendingQRows } = await supabase
+      .from('quotes')
+      .select(
+        `
+        id,
+        service_description,
+        created_at,
+        profiles!quotes_customer_id_fkey(full_name)
+      `
+      )
+      .eq('provider_id', providerId)
+      .eq('status', 'requested')
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    setProviderPendingQuotes(
+      (pendingQRows ?? []).map((row) => {
+        const r = row as {
+          id: string
+          service_description: string
+          created_at: string
+          profiles: { full_name: string | null } | null
+        }
+        return {
+          id: r.id,
+          service_description: r.service_description,
+          created_at: r.created_at,
+          profiles: r.profiles,
+        }
+      })
+    )
+  }, [])
 
   useEffect(() => {
     if (!user || !profile) {
@@ -109,6 +222,55 @@ export function Dashboard() {
 
     fetchData()
   }, [user?.id, profile?.role])
+
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'customer') return
+
+    const channel = supabase
+      .channel(`dashboard-quotes-customer:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'quotes',
+          filter: `customer_id=eq.${user.id}`,
+        },
+        () => {
+          void refreshCustomerQuotes(user.id)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, profile?.role, refreshCustomerQuotes])
+
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'provider' || !providerData?.id) return
+    const pid = providerData.id
+
+    const channel = supabase
+      .channel(`dashboard-quotes-provider:${pid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'quotes',
+          filter: `provider_id=eq.${pid}`,
+        },
+        () => {
+          void refreshProviderQuotes(pid)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, profile?.role, providerData?.id, refreshProviderQuotes])
 
   async function fetchCustomerData(customerId: string) {
     const { data: postsData } = await supabase
@@ -180,6 +342,8 @@ export function Dashboard() {
       .eq('customer_id', customerId)
       .eq('status', 'completed')
     setCompletedBookingsCount(completedCount ?? 0)
+
+    await refreshCustomerQuotes(customerId)
   }
 
   async function fetchProviderData(profileId: string) {
@@ -192,6 +356,8 @@ export function Dashboard() {
     const provider = providerRow as ServiceProvider | null
     if (!provider) {
       setProviderListingReady(false)
+      setProviderPendingQuoteCount(0)
+      setProviderPendingQuotes([])
       setLoading(false)
       return
     }
@@ -257,6 +423,8 @@ export function Dashboard() {
       .eq('requested_by', profileId)
       .order('created_at', { ascending: false })
     setMyRequests((reqData || []) as { id: string; name: string; status: string; admin_feedback: string | null }[])
+
+    await refreshProviderQuotes(provider.id)
   }
 
   if (authLoading) {
@@ -357,13 +525,19 @@ export function Dashboard() {
               My Bookings
             </Button>
           </Link>
+          <Link to={ROUTES.QUOTES}>
+            <Button variant="outline" icon={<ClipboardList className="size-5" />}>
+              My Quotes
+            </Button>
+          </Link>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-3">
+        <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
           {[
             { icon: FileText, bg: 'bg-primary-100', color: 'text-primary-600', value: activePostsCount, label: 'Active Posts', delay: 0 },
             { icon: CalendarCheck, bg: 'bg-warning-100', color: 'text-warning-600', value: pendingBookingsCount, label: 'Pending Bookings', delay: 80 },
             { icon: TrendingUp, bg: 'bg-success-100', color: 'text-success-600', value: completedBookingsCount, label: 'Completed Services', delay: 160 },
+            { icon: ClipboardList, bg: 'bg-sky-100', color: 'text-sky-700', value: customerQuotesToReviewCount, label: 'Quotes to review', delay: 200 },
           ].map(({ icon: Icon, bg, color, value, label, delay }) => (
             <Reveal key={label} delay={delay} animation="scale" className="h-full">
               <Card padding="md" className="card-hover-lift h-full">
@@ -379,6 +553,71 @@ export function Dashboard() {
               </Card>
             </Reveal>
           ))}
+        </section>
+
+        <section>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Your quotes</h2>
+              <p className="mt-0.5 text-sm text-gray-500">
+                {customerAwaitingQuotesCount > 0 && (
+                  <span>{customerAwaitingQuotesCount} awaiting a quote from a provider</span>
+                )}
+                {customerAwaitingQuotesCount > 0 && customerQuotesToReviewCount > 0 && ' · '}
+                {customerQuotesToReviewCount > 0 && (
+                  <span>{customerQuotesToReviewCount} need your response</span>
+                )}
+                {customerAwaitingQuotesCount === 0 &&
+                  customerQuotesToReviewCount === 0 &&
+                  'Request quotes from provider profiles — they will show up here.'}
+              </p>
+            </div>
+            <Link
+              to={ROUTES.QUOTES}
+              className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+            >
+              Open My Quotes
+            </Link>
+          </div>
+          {customerQuotedQuotes.length === 0 ? (
+            <Card padding="md">
+              <p className="text-sm text-gray-600">
+                {customerQuotesToReviewCount > 0 || customerAwaitingQuotesCount > 0
+                  ? 'Open My Quotes to review details and respond.'
+                  : 'No active quote activity yet.'}
+              </p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {customerQuotedQuotes.map((q) => (
+                <Link
+                  key={q.id}
+                  to={`${ROUTES.QUOTES}?filter=quoted&quote=${q.id}`}
+                >
+                  <Card padding="md" hover>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900 line-clamp-2">{q.service_description}</p>
+                        <p className="mt-0.5 text-sm text-gray-500">
+                          {q.service_providers?.business_name ?? 'Provider'} ·{' '}
+                          {formatRelativeTime(q.created_at)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {q.quoted_amount != null && (
+                          <span className="font-semibold text-primary-700">
+                            {formatCurrency(q.quoted_amount)}
+                          </span>
+                        )}
+                        <Badge variant="info">Respond</Badge>
+                        <ArrowRight className="size-4 text-gray-400" />
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
         <section>
@@ -522,6 +761,11 @@ export function Dashboard() {
             View Opportunities
           </Button>
         </Link>
+        <Link to={ROUTES.QUOTES}>
+          <Button variant="outline" icon={<ClipboardList className="size-5" />}>
+            My Quotes
+          </Button>
+        </Link>
         <Link to={ROUTES.PROVIDER_PROFILE.replace(':id', providerData?.id || '')}>
           <Button variant="outline" icon={<Briefcase className="size-5" />}>
             My Services
@@ -529,9 +773,10 @@ export function Dashboard() {
         </Link>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <section className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         {[
           { icon: Star, bg: 'bg-warning-100', color: 'text-warning-600', value: providerData?.rating_avg?.toFixed(1) ?? '0.0', label: 'Rating' },
+          { icon: ClipboardList, bg: 'bg-sky-100', color: 'text-sky-700', value: providerPendingQuoteCount, label: 'Quote requests' },
           { icon: MessageSquare, bg: 'bg-primary-100', color: 'text-primary-600', value: opportunityPosts.length, label: 'Active Opportunities' },
           { icon: CalendarCheck, bg: 'bg-warning-100', color: 'text-warning-600', value: providerBookings.filter((b) => ['pending', 'confirmed', 'in_progress'].includes(b.status)).length, label: 'Pending Bookings' },
           { icon: TrendingUp, bg: 'bg-success-100', color: 'text-success-600', value: providerBookings.filter((b) => b.status === 'completed').length, label: 'Completed Jobs' },
@@ -551,6 +796,56 @@ export function Dashboard() {
             </Card>
           </Reveal>
         ))}
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold text-gray-900">Customer quote requests</h2>
+            {providerPendingQuoteCount > 0 && (
+              <Badge variant="warning">{providerPendingQuoteCount} pending</Badge>
+            )}
+          </div>
+          <Link
+            to={`${ROUTES.QUOTES}?filter=requested`}
+            className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+          >
+            View all in My Quotes
+          </Link>
+        </div>
+        {providerPendingQuotes.length === 0 ? (
+          <Card padding="md">
+            <p className="text-sm text-gray-600">
+              {providerPendingQuoteCount > 0
+                ? 'Open My Quotes to see full details and respond.'
+                : 'When customers request a quote from your profile, they will appear here.'}
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {providerPendingQuotes.map((q) => (
+              <Link
+                key={q.id}
+                to={`${ROUTES.QUOTES}?filter=requested&quote=${q.id}`}
+              >
+                <Card padding="md" hover>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900 line-clamp-2">{q.service_description}</p>
+                      <p className="mt-0.5 text-sm text-gray-500">
+                        {q.profiles?.full_name ?? 'Customer'} · {formatRelativeTime(q.created_at)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant="warning">Awaiting your quote</Badge>
+                      <ArrowRight className="size-4 text-gray-400" />
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </section>
 
       <section>

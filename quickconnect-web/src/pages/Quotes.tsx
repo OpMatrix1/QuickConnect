@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Send,
   Clock,
@@ -59,6 +59,7 @@ const FILTER_TABS: { id: QuoteFilter; label: string }[] = [
 export function Quotes() {
   const { user, profile, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [quotes, setQuotes] = useState<QuoteWithDetails[]>([])
   const [providerId, setProviderId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -136,6 +137,15 @@ export function Quotes() {
   }, [fetchQuotes])
 
   useEffect(() => {
+    const f = searchParams.get('filter')
+    if (f === 'all' || f === 'requested' || f === 'quoted' || f === 'accepted' || f === 'rejected') {
+      setFilter(f)
+    }
+    const q = searchParams.get('quote')
+    if (q?.trim()) setExpandedId(q.trim())
+  }, [searchParams])
+
+  useEffect(() => {
     if (!user?.id) return
     if (isProvider && !providerId) return
 
@@ -153,7 +163,30 @@ export function Quotes() {
           table: 'quotes',
           filter,
         },
-        () => {
+        (payload) => {
+          if (payload.eventType === 'UPDATE' && payload.new) {
+            const row = payload.new as QuoteWithDetails
+            setQuotes((prev) => {
+              const ix = prev.findIndex((q) => q.id === row.id)
+              if (ix === -1) {
+                void fetchQuotes()
+                return prev
+              }
+              const next = [...prev]
+              next[ix] = { ...next[ix], ...row }
+              return next
+            })
+            return
+          }
+          if (payload.eventType === 'INSERT') {
+            void fetchQuotes()
+            return
+          }
+          if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
+            const id = (payload.old as { id: string }).id
+            setQuotes((prev) => prev.filter((q) => q.id !== id))
+            return
+          }
           void fetchQuotes()
         }
       )
