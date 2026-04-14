@@ -443,11 +443,12 @@ CREATE TRIGGER trg_messages_after_insert_bump_notify
   AFTER INSERT ON public.messages
   FOR EACH ROW EXECUTE FUNCTION public.on_message_insert_bump_and_notify();
 
--- Supabase Realtime: required for live message/quote delivery in the app (ignore if already registered)
+-- Supabase Realtime: required for live message/quote/booking delivery in the app (ignore if already registered)
 DO $$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
   ALTER PUBLICATION supabase_realtime ADD TABLE public.quotes;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.bookings;
 EXCEPTION
   WHEN OTHERS THEN
     NULL;

@@ -100,6 +100,7 @@ export function MyBookings() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [providerIdForRealtime, setProviderIdForRealtime] = useState<string | null>(null)
   const isProvider = profile?.role === 'provider'
 
   // Edit modal form state
@@ -109,10 +110,12 @@ export function MyBookings() {
   const [editNotes, setEditNotes] = useState('')
   const [editPrice, setEditPrice] = useState('')
 
-  const fetchBookings = useCallback(async () => {
+  const fetchBookings = useCallback(async (opts?: { silent?: boolean }) => {
     if (!user) return
-    setLoading(true)
-    setError(null)
+    if (!opts?.silent) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       if (isProvider) {
         const { data: providerRow } = await supabase
@@ -122,10 +125,12 @@ export function MyBookings() {
           .single()
         const providerId = (providerRow as { id: string } | null)?.id
         if (!providerId) {
+          setProviderIdForRealtime(null)
           setBookings([])
-          setLoading(false)
+          if (!opts?.silent) setLoading(false)
           return
         }
+        setProviderIdForRealtime(providerId)
 
         const { data, error: fetchError } = await supabase
           .from('bookings')
@@ -145,6 +150,7 @@ export function MyBookings() {
         if (fetchError) throw fetchError
         setBookings((data ?? []) as unknown as BookingWithDetails[])
       } else {
+        setProviderIdForRealtime(null)
         const { data, error: fetchError } = await supabase
           .from('bookings')
           .select(
@@ -167,16 +173,47 @@ export function MyBookings() {
         setBookings((data ?? []) as unknown as BookingWithDetails[])
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load bookings')
-      setBookings([])
+      if (!opts?.silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load bookings')
+        setBookings([])
+      }
     } finally {
-      setLoading(false)
+      if (!opts?.silent) setLoading(false)
     }
   }, [user, isProvider])
 
   useEffect(() => {
     fetchBookings()
   }, [fetchBookings])
+
+  useEffect(() => {
+    if (!user?.id) return
+    if (isProvider && !providerIdForRealtime) return
+
+    const filter = isProvider
+      ? `provider_id=eq.${providerIdForRealtime}`
+      : `customer_id=eq.${user.id}`
+
+    const channel = supabase
+      .channel(`bookings-list:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter,
+        },
+        () => {
+          void fetchBookings({ silent: true })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, isProvider, providerIdForRealtime, fetchBookings])
 
   const filteredBookings =
     statusFilter === 'all'

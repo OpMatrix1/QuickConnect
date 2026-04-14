@@ -197,6 +197,63 @@ export function Dashboard() {
     )
   }, [])
 
+  const refreshCustomerBookings = useCallback(async (customerId: string) => {
+    const { data: bookingsData } = await supabase
+      .from('bookings')
+      .select(
+        `
+        *,
+        service_providers!bookings_provider_id_fkey(
+          profiles!service_providers_profile_id_fkey(full_name, avatar_url)
+        )
+      `
+      )
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    setCustomerBookings((bookingsData || []) as unknown as BookingWithProvider[])
+
+    const { count: pendingCount } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .in('status', ['pending', 'confirmed', 'in_progress'])
+    setPendingBookingsCount(pendingCount ?? 0)
+
+    const { count: completedCount } = await supabase
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .eq('status', 'completed')
+    setCompletedBookingsCount(completedCount ?? 0)
+  }, [])
+
+  const refreshProviderBookings = useCallback(async (providerId: string) => {
+    const { data: bookingsData } = await supabase
+      .from('bookings')
+      .select(
+        `
+        *,
+        profiles!bookings_customer_id_fkey(full_name, avatar_url)
+      `
+      )
+      .eq('provider_id', providerId)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    setProviderBookings((bookingsData || []) as unknown as BookingWithProvider[])
+
+    const { data: completedBookings } = await supabase
+      .from('bookings')
+      .select('agreed_price')
+      .eq('provider_id', providerId)
+      .eq('status', 'completed')
+    const completedList = (completedBookings || []) as { agreed_price: number | null }[]
+    const total = completedList.reduce((sum, b) => sum + (b.agreed_price || 0), 0)
+    setEarnings(total)
+  }, [])
+
   useEffect(() => {
     if (!user || !profile) {
       setLoading(false)
@@ -272,6 +329,55 @@ export function Dashboard() {
     }
   }, [user?.id, profile?.role, providerData?.id, refreshProviderQuotes])
 
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'customer') return
+
+    const channel = supabase
+      .channel(`dashboard-bookings-customer:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `customer_id=eq.${user.id}`,
+        },
+        () => {
+          void refreshCustomerBookings(user.id)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, profile?.role, refreshCustomerBookings])
+
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'provider' || !providerData?.id) return
+    const pid = providerData.id
+
+    const channel = supabase
+      .channel(`dashboard-bookings-provider:${pid}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'bookings',
+          filter: `provider_id=eq.${pid}`,
+        },
+        () => {
+          void refreshProviderBookings(pid)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, profile?.role, providerData?.id, refreshProviderBookings])
+
   async function fetchCustomerData(customerId: string) {
     const { data: postsData } = await supabase
       .from('looking_for_posts')
@@ -313,35 +419,7 @@ export function Dashboard() {
       prev.map((p) => ({ ...p, response_count: responseCounts[p.id] || 0 }))
     )
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select(
-        `
-        *,
-        service_providers!bookings_provider_id_fkey(
-          profiles!service_providers_profile_id_fkey(full_name, avatar_url)
-        )
-      `
-      )
-      .eq('customer_id', customerId)
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    setCustomerBookings((bookingsData || []) as unknown as BookingWithProvider[])
-
-    const { count: pendingCount } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('customer_id', customerId)
-      .in('status', ['pending', 'confirmed', 'in_progress'])
-    setPendingBookingsCount(pendingCount ?? 0)
-
-    const { count: completedCount } = await supabase
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('customer_id', customerId)
-      .eq('status', 'completed')
-    setCompletedBookingsCount(completedCount ?? 0)
+    await refreshCustomerBookings(customerId)
 
     await refreshCustomerQuotes(customerId)
   }
@@ -377,28 +455,7 @@ export function Dashboard() {
     )
     const categoryIds = [...new Set(servicesList.map((s) => s.category_id))]
 
-    const { data: bookingsData } = await supabase
-      .from('bookings')
-      .select(
-        `
-        *,
-        profiles!bookings_customer_id_fkey(full_name, avatar_url)
-      `
-      )
-      .eq('provider_id', provider.id)
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    setProviderBookings((bookingsData || []) as unknown as BookingWithProvider[])
-
-    const { data: completedBookings } = await supabase
-      .from('bookings')
-      .select('agreed_price')
-      .eq('provider_id', provider.id)
-      .eq('status', 'completed')
-    const completedList = (completedBookings || []) as { agreed_price: number | null }[]
-    const total = completedList.reduce((sum, b) => sum + (b.agreed_price || 0), 0)
-    setEarnings(total)
+    await refreshProviderBookings(provider.id)
 
     if (categoryIds.length > 0) {
       const { data: postsData } = await supabase
