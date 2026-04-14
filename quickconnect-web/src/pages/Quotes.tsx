@@ -242,9 +242,9 @@ export function Quotes() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-gray-900">My Quotes</h1>
-        <p className="mt-1 text-gray-600">
+      <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
+        <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">My Quotes</h1>
+        <p className="mt-1 text-sm text-gray-600 sm:text-base">
           {isProvider
             ? 'Review and respond to quote requests from customers'
             : 'Track quote requests you\'ve sent to providers'}

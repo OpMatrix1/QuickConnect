@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Wallet,
-  Search, Home as HomeIcon, FileText, Users, CalendarCheck,
+  Search, Home as HomeIcon, FileText, Users, CalendarCheck, MessageCircle, ClipboardList,
 } from 'lucide-react'
 import { cn, getInitials, formatRelativeTime } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
@@ -408,14 +408,17 @@ export function Header() {
                   {label}
                 </Link>
               ))}
-              <Link to={ROUTES.DASHBOARD} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
-                <LayoutDashboard className="size-5 text-gray-500" />Dashboard
-              </Link>
               <Link to={ROUTES.PROFILE} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
                 <User className="size-5 text-gray-500" />Profile
               </Link>
               <Link to={ROUTES.WALLET} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
                 <Wallet className="size-5 text-gray-500" />My Wallet
+              </Link>
+              <Link to={ROUTES.CHAT} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                <MessageCircle className="size-5 text-gray-500" />Messages
+              </Link>
+              <Link to={ROUTES.QUOTES} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
+                <ClipboardList className="size-5 text-gray-500" />My Quotes
               </Link>
               {profile?.role === 'admin' && (
                 <Link to={ROUTES.ADMIN} onClick={() => setMobileOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-100">
