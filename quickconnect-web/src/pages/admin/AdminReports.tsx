@@ -41,6 +41,7 @@ interface DisputedPayment {
   id: string
   amount: number
   status: string
+  method: string | null
   created_at: string
   booking_id: string
   dispute_customer_statement: string | null
@@ -139,7 +140,7 @@ export function AdminReports() {
     const { data } = await supabase
       .from('payments')
       .select(`
-        id, amount, status, created_at, booking_id,
+        id, amount, status, method, created_at, booking_id,
         dispute_customer_statement,
         dispute_provider_statement,
         dispute_initiated_by,
@@ -740,7 +741,10 @@ export function AdminReports() {
         </h2>
         <p className="mb-4 text-sm text-gray-500">
           Review each party&apos;s story and both wallet balances before refunding, releasing escrow, or applying a
-          customer debit. Wallets may show a negative balance after a debit until the customer tops up.
+          customer debit. Wallets may show a negative balance after a debit until the customer tops up. Rows with{' '}
+          <strong>no wallet escrow</strong> (e.g. customer never paid — provider-reported dispute):{' '}
+          <strong>Release to provider</strong> debits the customer and credits the provider by the claimed amount;{' '}
+          <strong>Refund customer</strong> closes the dispute without crediting the customer (they did not pay into escrow).
         </p>
 
         {disputeError && (
@@ -770,6 +774,9 @@ export function AdminReports() {
                   custId !== undefined ? walletBalancesByUserId[custId] : undefined
                 const provBal =
                   provProfileId !== undefined ? walletBalancesByUserId[provProfileId] : undefined
+                const likelyNoWalletEscrow =
+                  p.status === 'disputed' &&
+                  (p.method == null || p.method === '')
                 return (
                   <li
                     key={p.id}
@@ -787,7 +794,8 @@ export function AdminReports() {
                             {p.status === 'disputed' ? 'Disputed' : 'Held'}
                           </Badge>
                           <span className="text-base font-semibold text-gray-900">
-                            Escrow {formatCurrency(p.amount)}
+                            {likelyNoWalletEscrow ? 'Claimed ' : 'Escrow '}
+                            {formatCurrency(p.amount)}
                           </span>
                           {p.dispute_initiated_by && (
                             <span className="text-xs text-gray-500">
@@ -838,6 +846,13 @@ export function AdminReports() {
                             </span>
                           </div>
                         </div>
+                        {likelyNoWalletEscrow && (
+                          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            No wallet escrow on file for this booking. Use <strong>Release to provider</strong> to debit
+                            the customer and credit the provider, or <strong>Refund customer</strong> to close the dispute
+                            in the customer&apos;s favor without adding wallet funds.
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-2 shrink-0">
                         <Button
