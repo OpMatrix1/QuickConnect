@@ -260,59 +260,59 @@ export function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
+      <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Card padding="md" className="min-w-0">
+          <CardContent className="flex min-w-0 items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-600">
               <Users className="size-6" />
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-2xl font-bold text-gray-900">{totalUsers}</p>
               <p className="text-sm text-gray-600">Total Users</p>
             </div>
           </CardContent>
         </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-accent-100 text-accent-600">
+        <Card padding="md" className="min-w-0">
+          <CardContent className="flex min-w-0 items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent-100 text-accent-600">
               <Briefcase className="size-6" />
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-2xl font-bold text-gray-900">{totalProviders}</p>
               <p className="text-sm text-gray-600">Total Providers</p>
             </div>
           </CardContent>
         </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
+        <Card padding="md" className="min-w-0">
+          <CardContent className="flex min-w-0 items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-warning-100 text-warning-600">
               <CalendarCheck className="size-6" />
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-2xl font-bold text-gray-900">{totalBookings}</p>
               <p className="text-sm text-gray-600">Total Bookings</p>
             </div>
           </CardContent>
         </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-success-100 text-success-600">
+        <Card padding="md" className="min-w-0">
+          <CardContent className="flex min-w-0 items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-success-100 text-success-600">
               <DollarSign className="size-6" />
             </span>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-lg font-bold leading-snug text-gray-900 tabular-nums sm:text-xl lg:text-2xl">
                 {formatCurrency(totalRevenue)}
               </p>
               <p className="text-sm text-gray-600">Total Revenue</p>
             </div>
           </CardContent>
         </Card>
-        <Card padding="md">
-          <CardContent className="flex items-center gap-4">
-            <span className="flex size-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+        <Card padding="md" className="min-w-0">
+          <CardContent className="flex min-w-0 items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
               <FileText className="size-6" />
             </span>
-            <div>
+            <div className="min-w-0">
               <p className="text-2xl font-bold text-gray-900">{activePosts}</p>
               <p className="text-sm text-gray-600">Active Posts</p>
             </div>

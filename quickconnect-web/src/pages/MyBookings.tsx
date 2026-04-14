@@ -447,21 +447,43 @@ export function MyBookings() {
       return
     }
     const payment = disputeModal.payments?.[0]
-    if (!payment) return
+    const isProviderNonPaymentDispute =
+      isProvider &&
+      disputeModal.status === 'completed' &&
+      !payment &&
+      (disputeModal.agreed_price ?? 0) > 0
+
+    if (!payment && !isProviderNonPaymentDispute) {
+      setError('Unable to open a dispute for this booking.')
+      return
+    }
+
     setActionLoading(disputeModal.id)
     setError(null)
     try {
-      const field = isProvider ? 'dispute_provider_statement' : 'dispute_customer_statement'
-      const { error } = await supabase
-        .from('payments')
-        .update({
+      if (isProviderNonPaymentDispute) {
+        const { error } = await supabase.from('payments').insert({
+          booking_id: disputeModal.id,
+          amount: disputeModal.agreed_price ?? 0,
           status: 'disputed',
-          dispute_initiated_by: isProvider ? 'provider' : 'customer',
+          dispute_initiated_by: 'provider',
           dispute_opened_at: new Date().toISOString(),
-          [field]: text,
+          dispute_provider_statement: text,
         } as never)
-        .eq('id' as any, payment.id as any)
-      if (error) throw error
+        if (error) throw error
+      } else if (payment) {
+        const field = isProvider ? 'dispute_provider_statement' : 'dispute_customer_statement'
+        const { error } = await supabase
+          .from('payments')
+          .update({
+            status: 'disputed',
+            dispute_initiated_by: isProvider ? 'provider' : 'customer',
+            dispute_opened_at: new Date().toISOString(),
+            [field]: text,
+          } as never)
+          .eq('id' as any, payment.id as any)
+        if (error) throw error
+      }
       setDisputeModal(null)
       setDisputeReason('')
       await fetchBookings()
@@ -944,6 +966,32 @@ export function MyBookings() {
                         <Badge variant="warning">Payment Refunded to Customer</Badge>
                       )}
 
+                      {/* Provider: completed job but customer never paid — open dispute for admin review */}
+                      {isProvider &&
+                        booking.status === 'completed' &&
+                        !hasPayment(booking) &&
+                        (booking.agreed_price ?? 0) > 0 && (
+                          <div className="flex w-full basis-full flex-col gap-2 border-t border-gray-200 pt-3">
+                            <p className="text-sm text-gray-600">
+                              No payment is on file for this completed job. If the customer has not paid,
+                              report it so an admin can review.
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="self-start text-danger-600 hover:bg-danger-50"
+                              icon={<AlertCircle className="size-4" />}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openDisputeModal(booking)
+                              }}
+                              loading={actionLoading === booking.id}
+                            >
+                              Report non-payment (dispute)
+                            </Button>
+                          </div>
+                        )}
+
                       {/* Customer: pay from wallet (available from confirmed onwards) */}
                       {canPay(booking) && (
                         <Button
@@ -1046,14 +1094,33 @@ export function MyBookings() {
           setDisputeModal(null)
           setDisputeReason('')
         }}
-        title="Raise a payment dispute"
+        title={
+          disputeModal &&
+          isProvider &&
+          !hasPayment(disputeModal) &&
+          disputeModal.status === 'completed'
+            ? 'Report non-payment'
+            : 'Raise a payment dispute'
+        }
         size="md"
       >
         {disputeModal && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              Describe what went wrong. An admin will review your story and the other party&apos;s before
-              releasing or refunding escrow. Be factual and specific.
+              {isProvider &&
+              !hasPayment(disputeModal) &&
+              disputeModal.status === 'completed' &&
+              (disputeModal.agreed_price ?? 0) > 0 ? (
+                <>
+                  There is no wallet payment on file for this booking. Explain what was agreed, what work
+                  was completed, and why payment was not received. An admin will review and follow up.
+                </>
+              ) : (
+                <>
+                  Describe what went wrong. An admin will review your story and the other party&apos;s before
+                  releasing or refunding escrow. Be factual and specific.
+                </>
+              )}
             </p>
             <Textarea
               label="What happened? (at least 20 characters)"

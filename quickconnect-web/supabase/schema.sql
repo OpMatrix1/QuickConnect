@@ -460,13 +460,18 @@ DECLARE
   v_provider_name TEXT;
   v_amount TEXT;
 BEGIN
-  IF TG_OP <> 'UPDATE' THEN
-    RETURN NEW;
-  END IF;
-  IF NEW.status IS DISTINCT FROM 'disputed' THEN
-    RETURN NEW;
-  END IF;
-  IF OLD.status = 'disputed' THEN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status IS DISTINCT FROM 'disputed' THEN
+      RETURN NEW;
+    END IF;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF NEW.status IS DISTINCT FROM 'disputed' THEN
+      RETURN NEW;
+    END IF;
+    IF OLD.status IS NOT DISTINCT FROM 'disputed' THEN
+      RETURN NEW;
+    END IF;
+  ELSE
     RETURN NEW;
   END IF;
 
@@ -508,8 +513,8 @@ BEGIN
 END;
 $$;
 
-CREATE TRIGGER trg_payments_after_update_notify_admins_disputed
-  AFTER UPDATE OF status ON public.payments
+CREATE TRIGGER trg_payments_disputed_notify_admins
+  AFTER INSERT OR UPDATE OF status ON public.payments
   FOR EACH ROW
   EXECUTE FUNCTION public.notify_admins_payment_disputed();
 
