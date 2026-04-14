@@ -60,6 +60,7 @@ export function Quotes() {
   const { user, profile, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [quotes, setQuotes] = useState<QuoteWithDetails[]>([])
+  const [providerId, setProviderId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<QuoteFilter>('all')
@@ -88,10 +89,12 @@ export function Quotes() {
           .single()
         const providerId = (providerRow as { id: string } | null)?.id
         if (!providerId) {
+          setProviderId(null)
           setQuotes([])
           setLoading(false)
           return
         }
+        setProviderId(providerId)
 
         const { data, error: fetchError } = await supabase
           .from('quotes')
@@ -105,6 +108,7 @@ export function Quotes() {
         if (fetchError) throw fetchError
         setQuotes((data ?? []) as unknown as QuoteWithDetails[])
       } else {
+        setProviderId(null)
         const { data, error: fetchError } = await supabase
           .from('quotes')
           .select(`
@@ -130,6 +134,35 @@ export function Quotes() {
   useEffect(() => {
     fetchQuotes()
   }, [fetchQuotes])
+
+  useEffect(() => {
+    if (!user?.id) return
+    if (isProvider && !providerId) return
+
+    const filter = isProvider
+      ? `provider_id=eq.${providerId}`
+      : `customer_id=eq.${user.id}`
+
+    const channel = supabase
+      .channel(`quotes-realtime:${isProvider ? providerId : user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'quotes',
+          filter,
+        },
+        () => {
+          void fetchQuotes()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [user?.id, isProvider, providerId, fetchQuotes])
 
   const filteredQuotes =
     filter === 'all'

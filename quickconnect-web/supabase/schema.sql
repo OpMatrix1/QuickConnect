@@ -410,6 +410,50 @@ CREATE TRIGGER on_review_delete
   AFTER DELETE ON public.reviews
   FOR EACH ROW EXECUTE FUNCTION public.update_provider_rating_on_review_delete();
 
+-- Messages: keep conversation ordering fresh and notify receiver (bell + Realtime)
+CREATE OR REPLACE FUNCTION public.on_message_insert_bump_and_notify()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  UPDATE public.conversations
+  SET last_message_at = NEW.created_at
+  WHERE id = NEW.conversation_id;
+
+  INSERT INTO public.notifications (user_id, type, title, body, data)
+  VALUES (
+    NEW.receiver_id,
+    'message',
+    'New message',
+    LEFT(NEW.content, 160),
+    jsonb_build_object(
+      'conversation_id', NEW.conversation_id,
+      'message_id', NEW.id,
+      'path', '/chat/' || NEW.conversation_id::text
+    )
+  );
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_messages_after_insert_bump_notify
+  AFTER INSERT ON public.messages
+  FOR EACH ROW EXECUTE FUNCTION public.on_message_insert_bump_and_notify();
+
+-- Supabase Realtime: required for live message/quote delivery in the app (ignore if already registered)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.quotes;
+EXCEPTION
+  WHEN OTHERS THEN
+    NULL;
+END
+$$;
+
 -- =============================================================================
 -- ROW LEVEL SECURITY (RLS)
 -- =============================================================================

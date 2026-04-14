@@ -41,11 +41,14 @@ export function Chat() {
   const [sending, setSending] = useState(false)
   const [unreadByConv, setUnreadByConv] = useState<Record<string, number>>({})
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const activeConversationIdRef = useRef<string | undefined>(undefined)
   const [mobileShowChat, setMobileShowChat] = useState(false)
 
   useEffect(() => {
     if (conversationId) setMobileShowChat(true)
   }, [conversationId])
+
+  activeConversationIdRef.current = conversationId
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -97,6 +100,20 @@ export function Chat() {
     }
   }, [user])
 
+  const refreshUnread = useCallback(async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('messages')
+      .select('conversation_id')
+      .eq('receiver_id', user.id)
+      .eq('is_read', false)
+    const counts: Record<string, number> = {}
+    ;(data ?? []).forEach((m: { conversation_id: string }) => {
+      counts[m.conversation_id] = (counts[m.conversation_id] ?? 0) + 1
+    })
+    setUnreadByConv(counts)
+  }, [user])
+
   useEffect(() => {
     fetchConversations()
   }, [fetchConversations])
@@ -130,36 +147,32 @@ export function Chat() {
   }, [fetchMessages])
 
   useEffect(() => {
-    if (!user) return
-    supabase
-      .from('messages')
-      .select('conversation_id')
-      .eq('receiver_id', user.id)
-      .eq('is_read', false)
-      .then(({ data }) => {
-        const counts: Record<string, number> = {}
-        ;(data ?? []).forEach((m: { conversation_id: string }) => {
-          counts[m.conversation_id] = (counts[m.conversation_id] ?? 0) + 1
-        })
-        setUnreadByConv(counts)
-      })
-  }, [user, messages, conversationId])
+    void refreshUnread()
+  }, [refreshUnread])
 
   useEffect(() => {
-    if (!conversationId) return
+    if (!user?.id) return
 
     const channel = supabase
-      .channel(`messages:${conversationId}`)
+      .channel(`messages-inbox:${user.id}`)
       .on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'messages',
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `receiver_id=eq.${user.id}`,
         },
-        (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message])
+        async (payload) => {
+          const row = payload.new as Message
+          const activeId = activeConversationIdRef.current
+          if (activeId && row.conversation_id === activeId) {
+            setMessages((prev) =>
+              prev.some((m) => m.id === row.id) ? prev : [...prev, row]
+            )
+          }
+          await fetchConversations()
+          await refreshUnread()
         }
       )
       .subscribe()
@@ -167,7 +180,7 @@ export function Chat() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [conversationId])
+  }, [user?.id, fetchConversations, refreshUnread])
 
   useEffect(() => {
     if (!conversationId || !user) return
@@ -178,8 +191,11 @@ export function Chat() {
       .eq('conversation_id', conversationId)
       .eq('receiver_id', user.id)
       .eq('is_read', false)
-      .then(() => fetchConversations())
-  }, [conversationId, user, fetchConversations])
+      .then(() => {
+        void fetchConversations()
+        void refreshUnread()
+      })
+  }, [conversationId, user, fetchConversations, refreshUnread])
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !conversationId || !user) return
@@ -209,10 +225,6 @@ export function Chat() {
       setMessages((prev) => [...prev, (data as Message)])
       setNewMessage('')
 
-      await supabase
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', conversationId)
       fetchConversations()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send message')
