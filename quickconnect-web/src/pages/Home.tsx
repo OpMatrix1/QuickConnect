@@ -35,6 +35,7 @@ import {
 } from 'lucide-react'
 import { ROUTES, APP_NAME } from '@/lib/constants'
 import { SERVICE_CATEGORIES, truncate } from '@/lib/utils'
+import { isProviderListingComplete } from '@/lib/providerListing'
 import { supabase } from '@/lib/supabase'
 import type { Profile, ServiceProvider, Service, ServiceCategory } from '@/lib/types'
 import { Avatar, StarRating, Badge, Spinner } from '@/components/ui'
@@ -133,17 +134,21 @@ export function Home() {
     supabase
       .from('service_providers')
       .select(
-        `*, profiles(*), services(id, title, price_min, price_max, price_type, service_categories(name))`
+        `*, profiles(*), services(id, title, price_min, price_max, price_type, is_active, service_categories(name))`
       )
       .order('rating_avg', { ascending: false })
       .then(({ data }) => {
         if (cancelled) return
         const all = (data ?? []) as unknown as ProviderWithDetails[]
-        const filtered = all.filter((p) =>
-          p.services?.some(
-            (s) => s.service_categories?.name?.toLowerCase() === selectedCategory.toLowerCase()
+        const filtered = all
+          .filter(isProviderListingComplete)
+          .filter((p) =>
+            p.services?.some(
+              (s) =>
+                s.is_active !== false &&
+                s.service_categories?.name?.toLowerCase() === selectedCategory.toLowerCase()
+            )
           )
-        )
         setCategoryProviders(filtered.slice(0, 6))
         setLoadingProviders(false)
       })

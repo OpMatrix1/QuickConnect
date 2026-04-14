@@ -48,6 +48,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['push-handler.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/QuickConnect/index.html',
         navigateFallbackDenylist: [/^\/api\//],

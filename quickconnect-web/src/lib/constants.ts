@@ -7,6 +7,8 @@ export const ROUTES = {
   HOME: '/',
   LOGIN: '/login',
   REGISTER: '/register',
+  FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
   LOOKING_FOR: '/looking-for',
   CREATE_POST: '/looking-for/create',
   POST_DETAIL: '/looking-for/:id',

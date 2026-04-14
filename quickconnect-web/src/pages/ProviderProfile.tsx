@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   MapPin,
@@ -26,6 +26,7 @@ import type {
   Review,
 } from '@/lib/types'
 import { useAuth } from '@/context/AuthContext'
+import { getQuotePlaceholderForCategories, QUOTE_PLACEHOLDER_DEFAULT } from '@/lib/quoteExamples'
 import {
   Button,
   Card,
@@ -95,6 +96,12 @@ export function ProviderProfile() {
     user &&
     profile?.role === 'provider' &&
     provider?.profile_id === user.id
+
+  const quoteDescriptionExample = useMemo(() => {
+    if (!provider?.services?.length) return QUOTE_PLACEHOLDER_DEFAULT
+    const names = provider.services.map((s) => s.service_categories?.name)
+    return getQuotePlaceholderForCategories(names)
+  }, [provider?.services])
 
   useEffect(() => {
     if (!id) return
@@ -288,15 +295,29 @@ export function ProviderProfile() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <Card className="overflow-hidden">
-        <div className="bg-gradient-to-br from-primary-50 to-accent-50/50 p-6 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+      <Card className="overflow-hidden p-0">
+        <div className="relative h-36 sm:h-44">
+          {provider.profiles?.banner_url ? (
+            <img
+              src={provider.profiles.banner_url}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-primary-100 via-accent-50 to-primary-50" />
+          )}
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+        </div>
+        <div className="relative -mt-14 px-4 sm:-mt-16 sm:px-8">
+          <div className="inline-flex rounded-full bg-white p-0.5 shadow-md ring-4 ring-white">
             <Avatar
               src={provider.profiles?.avatar_url}
               fallback={provider.business_name}
               size="xl"
             />
-            <div className="min-w-0 flex-1">
+          </div>
+        </div>
+        <div className="space-y-4 px-4 pb-8 pt-3 sm:px-8">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
                   {provider.business_name}
@@ -308,7 +329,7 @@ export function ProviderProfile() {
                   </Badge>
                 )}
                 {isOwnProfile && (
-                  <Link to={ROUTES.DASHBOARD}>
+                  <Link to={`${ROUTES.PROFILE}?section=account`}>
                     <Button variant="outline" size="sm" icon={<Edit3 className="size-4" />}>
                       Edit profile
                     </Button>
@@ -397,8 +418,6 @@ export function ProviderProfile() {
                   </Link>
                 </div>
               )}
-            </div>
-          </div>
         </div>
       </Card>
 
@@ -576,7 +595,7 @@ export function ProviderProfile() {
               label="What do you need? *"
               value={quoteDescription}
               onChange={(e) => setQuoteDescription(e.target.value)}
-              placeholder="e.g. Fix a leaking tap in the kitchen and bathroom..."
+              placeholder={quoteDescriptionExample}
               rows={3}
             />
             <div className="grid grid-cols-2 gap-4">

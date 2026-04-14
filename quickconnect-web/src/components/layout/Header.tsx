@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Wallet,
@@ -8,6 +8,12 @@ import { cn, getInitials, formatRelativeTime } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
 import { useAuth } from '@/context/AuthContext'
 import { useNotifications } from '@/context/NotificationContext'
+import {
+  getExistingPushSubscription,
+  isWebPushSupported,
+  subscribeWebPush,
+  unsubscribeWebPush,
+} from '@/lib/webPush'
 
 const NAV_TABS = [
   { to: ROUTES.HOME,        icon: HomeIcon,        label: 'Home',        authOnly: false },
@@ -26,8 +32,23 @@ export function Header() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [webPushOn, setWebPushOn] = useState(false)
+  const [webPushBusy, setWebPushBusy] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
+
+  const refreshWebPushState = useCallback(async () => {
+    if (!isWebPushSupported()) {
+      setWebPushOn(false)
+      return
+    }
+    const sub = await getExistingPushSubscription()
+    setWebPushOn(!!sub && Notification.permission === 'granted')
+  }, [])
+
+  useEffect(() => {
+    if (user) void refreshWebPushState()
+  }, [user, refreshWebPushState])
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -146,35 +167,80 @@ export function Header() {
                 </button>
 
                 {notifOpen && (
-                  <div className="absolute right-0 mt-2 w-80 max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-50">
-                    <div className="sticky top-0 flex items-center justify-between bg-white px-4 py-3 border-b border-gray-100">
+                  <div className="absolute right-0 mt-2 flex w-80 max-h-[420px] flex-col rounded-xl border border-gray-200 bg-white shadow-xl z-50">
+                    <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
                       <p className="text-sm font-semibold text-gray-900">Notifications</p>
                     </div>
-                    {notifications.length === 0 ? (
-                      <p className="px-4 py-8 text-center text-sm text-gray-400">No notifications yet</p>
-                    ) : (
-                      notifications.slice(0, 15).map((n) => (
-                        <div
-                          key={n.id}
-                          className={cn(
-                            'px-4 py-3 border-b border-gray-50 last:border-0 transition-colors',
-                            !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            {!n.is_read && (
-                              <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
+                    <div className="min-h-0 flex-1 overflow-y-auto">
+                      {notifications.length === 0 ? (
+                        <p className="px-4 py-8 text-center text-sm text-gray-400">No notifications yet</p>
+                      ) : (
+                        notifications.slice(0, 15).map((n) => (
+                          <div
+                            key={n.id}
+                            className={cn(
+                              'px-4 py-3 border-b border-gray-50 last:border-0 transition-colors',
+                              !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
                             )}
-                            <div className={!n.is_read ? '' : 'pl-4'}>
-                              <p className="text-sm font-medium text-gray-900 leading-snug">{n.title}</p>
-                              {n.body && (
-                                <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{n.body}</p>
+                          >
+                            <div className="flex items-start gap-2">
+                              {!n.is_read && (
+                                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
                               )}
-                              <p className="mt-1 text-[11px] text-gray-400">{formatRelativeTime(n.created_at)}</p>
+                              <div className={!n.is_read ? '' : 'pl-4'}>
+                                <p className="text-sm font-medium text-gray-900 leading-snug">{n.title}</p>
+                                {n.body && (
+                                  <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{n.body}</p>
+                                )}
+                                <p className="mt-1 text-[11px] text-gray-400">{formatRelativeTime(n.created_at)}</p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        ))
+                      )}
+                    </div>
+                    {user && isWebPushSupported() && (
+                      <div className="shrink-0 border-t border-gray-100 bg-gray-50/80 px-3 py-2.5">
+                        <p className="text-[11px] text-gray-600 leading-snug mb-2">
+                          Alerts when you are away (Android &amp; desktop browsers).
+                        </p>
+                        {webPushOn ? (
+                          <button
+                            type="button"
+                            disabled={webPushBusy}
+                            onClick={async () => {
+                              setWebPushBusy(true)
+                              try {
+                                await unsubscribeWebPush()
+                                setWebPushOn(false)
+                              } finally {
+                                setWebPushBusy(false)
+                              }
+                            }}
+                            className="text-xs font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900 disabled:opacity-50"
+                          >
+                            {webPushBusy ? 'Updating…' : 'Turn off browser alerts'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={webPushBusy}
+                            onClick={async () => {
+                              if (!user) return
+                              setWebPushBusy(true)
+                              try {
+                                const res = await subscribeWebPush(user.id)
+                                if (res.ok) setWebPushOn(true)
+                              } finally {
+                                setWebPushBusy(false)
+                              }
+                            }}
+                            className="rounded-lg bg-primary-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-600 disabled:opacity-50"
+                          >
+                            {webPushBusy ? 'Enabling…' : 'Turn on browser alerts'}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}

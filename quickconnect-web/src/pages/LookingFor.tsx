@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { ROUTES } from '@/lib/constants'
 import {
+  cn,
   formatCurrency,
   formatRelativeTime,
   truncate,
@@ -102,18 +103,27 @@ function PostCard({ post }: { post: PostWithDetails }) {
               {post.response_count ?? 0} responses
             </p>
           </div>
-          <div className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-3">
+          <div className="mt-4 flex min-h-[2.75rem] items-center gap-3 border-t border-gray-100 pt-3">
             <Avatar
               src={post.profiles?.avatar_url}
               fallback={post.profiles?.full_name || '?'}
               size="sm"
             />
-            <span className="text-sm font-medium text-gray-700">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">
               {post.profiles?.full_name || 'Anonymous'}
             </span>
-            <Badge variant="primary" className="ml-auto">
-              {post.service_categories?.name}
-            </Badge>
+            <span
+              title={post.service_categories?.name ?? undefined}
+              className={cn(
+                'ml-auto flex h-11 w-[9.25rem] shrink-0 items-center justify-center overflow-hidden rounded-md px-1.5 py-1',
+                'bg-primary-100 text-center text-[11px] font-medium leading-snug text-primary-800',
+                'sm:w-40 sm:text-xs sm:leading-tight'
+              )}
+            >
+              <span className="line-clamp-2 break-words hyphens-auto">
+                {post.service_categories?.name}
+              </span>
+            </span>
           </div>
         </div>
       </Card>

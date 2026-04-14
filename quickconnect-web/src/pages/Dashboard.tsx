@@ -24,6 +24,7 @@ import {
   BOOKING_STATUS_CONFIG,
   POST_STATUS_CONFIG,
 } from '@/lib/utils'
+import { isProviderListingComplete, PROVIDER_LISTING_REQUIREMENTS_SHORT } from '@/lib/providerListing'
 import type {
   LookingForPost,
   Booking,
@@ -81,6 +82,7 @@ export function Dashboard() {
   const [catReqError, setCatReqError] = useState<string | null>(null)
   const [catReqSuccess, setCatReqSuccess] = useState(false)
   const [myRequests, setMyRequests] = useState<{ id: string; name: string; status: string; admin_feedback: string | null }[]>([])
+  const [providerListingReady, setProviderListingReady] = useState(true)
 
   useEffect(() => {
     if (!user || !profile) {
@@ -189,6 +191,7 @@ export function Dashboard() {
 
     const provider = providerRow as ServiceProvider | null
     if (!provider) {
+      setProviderListingReady(false)
       setLoading(false)
       return
     }
@@ -200,6 +203,12 @@ export function Dashboard() {
       .eq('provider_id', provider.id)
       .eq('is_active', true)
     const servicesList = (services || []) as { category_id: string }[]
+    setProviderListingReady(
+      isProviderListingComplete({
+        description: provider.description,
+        services: servicesList.map(() => ({ is_active: true })),
+      })
+    )
     const categoryIds = [...new Set(servicesList.map((s) => s.category_id))]
 
     const { data: bookingsData } = await supabase
@@ -490,6 +499,22 @@ export function Dashboard() {
           Manage your quotes, bookings, and earnings.
         </p>
       </section>
+
+      {!providerListingReady && (
+        <div
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+          role="status"
+        >
+          <p className="font-semibold text-amber-900">Your business is not visible to customers yet</p>
+          <p className="mt-1 text-amber-900/90">{PROVIDER_LISTING_REQUIREMENTS_SHORT}</p>
+          <Link
+            to={`${ROUTES.PROFILE}?section=business`}
+            className="mt-3 inline-flex font-medium text-primary-700 underline hover:text-primary-800"
+          >
+            Complete your business profile
+          </Link>
+        </div>
+      )}
 
       <section className="flex flex-wrap gap-4">
         <Link to={ROUTES.LOOKING_FOR}>

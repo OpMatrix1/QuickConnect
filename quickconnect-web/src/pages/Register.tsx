@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { User, Mail, Lock, Phone, MapPin, Building2 } from 'lucide-react'
+import { User, Mail, Lock, Phone, MapPin, Building2, Info } from 'lucide-react'
 import { cn, CITIES } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
+import { PROVIDER_SIGNUP_LISTING_NOTICE } from '@/lib/providerListing'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/Button'
 
@@ -119,6 +120,18 @@ export function Register() {
           Service Provider
         </button>
       </div>
+
+      {role === 'provider' && (
+        <div
+          className="animate-fade-up mt-6 rounded-lg border border-primary-200 bg-primary-50/90 p-4 text-sm text-primary-900"
+          style={{ animationDelay: '200ms' }}
+        >
+          <div className="flex gap-3">
+            <Info className="size-5 shrink-0 text-primary-600" aria-hidden />
+            <p className="leading-relaxed">{PROVIDER_SIGNUP_LISTING_NOTICE}</p>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="animate-fade-up mt-8 space-y-5" style={{ animationDelay: '240ms' }}>
         {error && (

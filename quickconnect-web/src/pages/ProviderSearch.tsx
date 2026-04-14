@@ -12,6 +12,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import { truncate, SERVICE_CATEGORIES, CITIES } from '@/lib/utils'
+import { isProviderListingComplete } from '@/lib/providerListing'
 import type { Profile, ServiceProvider, Service, ServiceCategory } from '@/lib/types'
 import {
   Button,
@@ -76,6 +77,7 @@ export function ProviderSearch() {
             price_min,
             price_max,
             price_type,
+            is_active,
             service_categories(name)
           )
         `
@@ -100,12 +102,14 @@ export function ProviderSearch() {
       if (fetchError) throw fetchError
 
       let results = (data ?? []) as unknown as ProviderWithDetails[]
+      results = results.filter(isProviderListingComplete)
 
       // Client-side filters (category, city, price) - Supabase nested filter is limited
       if (category) {
         results = results.filter((p) =>
           p.services?.some(
             (s) =>
+              s.is_active !== false &&
               s.service_categories?.name?.toLowerCase() === category.toLowerCase()
           )
         )
@@ -120,10 +124,8 @@ export function ProviderSearch() {
         const minPrice = minStr ? parseInt(minStr, 10) : 0
         const maxPrice = maxStr ? parseInt(maxStr, 10) : Infinity
         results = results.filter((p) => {
-          const prices = p.services?.flatMap((s) => [
-            s.price_min ?? 0,
-            s.price_max ?? 0,
-          ]) ?? []
+          const active = p.services?.filter((s) => s.is_active !== false) ?? []
+          const prices = active.flatMap((s) => [s.price_min ?? 0, s.price_max ?? 0])
           const hasMatch = prices.some(
             (pr) => pr >= minPrice && (maxPrice === Infinity || pr <= maxPrice)
           )
@@ -279,14 +281,14 @@ export function ProviderSearch() {
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {providers.map((provider, i) => (
-            <Reveal key={provider.id} delay={i * 60} animation="scale">
+            <Reveal key={provider.id} delay={i * 60} animation="scale" className="h-full">
             <Card
               hover
               padding="none"
               onClick={() => handleProviderClick(provider.id)}
-              className="card-hover-lift h-full overflow-hidden"
+              className="card-hover-lift flex h-full flex-col overflow-hidden"
             >
-              <div className="p-5">
+              <div className="flex min-h-0 flex-1 flex-col p-5">
                 <div className="flex gap-4">
                   <Avatar
                     src={provider.profiles?.avatar_url}
@@ -331,7 +333,7 @@ export function ProviderSearch() {
                   </div>
                 )}
               </div>
-              <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/50 px-5 py-3">
+              <div className="mt-auto flex shrink-0 items-center justify-between border-t border-gray-100 bg-gray-50/50 px-5 py-3">
                 <span className="text-sm text-gray-600">View profile</span>
                 <ChevronRight className="size-5 text-gray-400" />
               </div>

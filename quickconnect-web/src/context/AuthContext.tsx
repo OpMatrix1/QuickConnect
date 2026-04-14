@@ -13,6 +13,11 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   signUp: (email: string, password: string, fullName: string, role: 'customer' | 'provider', businessName?: string) => Promise<{ error: string | null }>
   signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  forgotPassword: (email: string) => Promise<{ error: string | null }>
+  /** Recovery / logged-out reset (email link session). Do not wrap in short timeouts — server can be slow. */
+  updatePassword: (password: string) => Promise<{ error: string | null }>
+  /** Change password while signed in; verifies current password first. */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
   updateProfile: (updates: ProfileUpdate) => Promise<{ error: string | null }>
   refreshProfile: () => Promise<void>
@@ -134,6 +139,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ user: null, session: null, profile: null, loading: false })
   }
 
+  const forgotPassword = async (email: string): Promise<{ error: string | null }> => {
+    try {
+      const basePath = import.meta.env.BASE_URL || '/'
+      const redirectPath = `${basePath.endsWith('/') ? basePath.slice(0, -1) : basePath}/reset-password`
+      const redirectTo = new URL(redirectPath, window.location.origin).toString()
+      const { error } = await withTimeout(
+        supabase.auth.resetPasswordForEmail(email, { redirectTo })
+      )
+      if (error) return { error: error.message }
+      return { error: null }
+    } catch (err) {
+      if (err instanceof Error && err.message === 'Request timed out') {
+        return { error: 'Request timed out. Please try again shortly.' }
+      }
+      return { error: 'Unable to connect to server. Please try again.' }
+    }
+  }
+
+  const updatePassword = async (password: string): Promise<{ error: string | null }> => {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) return { error: error.message }
+    return { error: null }
+  }
+
+  const changePassword = async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ error: string | null }> => {
+    const email = state.user?.email
+    if (!email) return { error: 'Not signed in' }
+    if (newPassword.length < 6) return { error: 'New password must be at least 6 characters' }
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    })
+    if (signInError) {
+      return { error: 'Current password is incorrect' }
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    if (error) return { error: error.message }
+    return { error: null }
+  }
+
   const updateProfile = async (updates: ProfileUpdate) => {
     if (!state.user) return { error: 'Not authenticated' }
     const { error } = await supabase
@@ -146,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ ...state, signUp, signIn, signOut, updateProfile, refreshProfile }}>
+    <AuthContext.Provider value={{ ...state, signUp, signIn, forgotPassword, updatePassword, changePassword, signOut, updateProfile, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )

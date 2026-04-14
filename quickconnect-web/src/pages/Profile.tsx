@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Navigate } from 'react-router-dom'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Navigate, Link, useSearchParams } from 'react-router-dom'
 import {
   Camera,
   Save,
@@ -8,6 +8,11 @@ import {
   Plus,
   Pencil,
   Trash2,
+  User,
+  Shield,
+  Lock,
+  ImageIcon,
+  Info,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -30,6 +35,7 @@ import {
   EmptyState,
 } from '@/components/ui'
 import { formatCurrency } from '@/lib/utils'
+import { isProviderListingComplete, PROVIDER_LISTING_REQUIREMENTS_SHORT } from '@/lib/providerListing'
 
 type ServiceWithCategory = Service & { service_categories: ServiceCategory | null }
 
@@ -39,11 +45,28 @@ const PRICE_TYPE_OPTIONS = [
   { value: 'quote', label: 'Quote' },
 ] as const
 
+type SettingsSection = 'account' | 'privacy' | 'security' | 'business'
+
+const SECTION_LABELS: Record<SettingsSection, string> = {
+  account: 'Account',
+  privacy: 'Privacy',
+  security: 'Security',
+  business: 'Business',
+}
+
 export function Profile() {
-  const { user, profile, loading: authLoading, updateProfile, refreshProfile } = useAuth()
+  const { user, profile, loading: authLoading, updateProfile, refreshProfile, changePassword } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [saving, setSaving] = useState(false)
+  const [savingBusiness, setSavingBusiness] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordFieldError, setPasswordFieldError] = useState<string | null>(null)
 
   // Form state
   const [fullName, setFullName] = useState('')
@@ -66,8 +89,48 @@ export function Profile() {
   const [areaModalOpen, setAreaModalOpen] = useState(false)
   const [editingArea, setEditingArea] = useState<ServiceArea | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [bannerUploading, setBannerUploading] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
+
+  const isProvider = profile?.role === 'provider'
+
+  const section: SettingsSection = useMemo(() => {
+    const raw = searchParams.get('section')
+    if (raw === 'privacy' || raw === 'security' || raw === 'business' || raw === 'account') {
+      if (raw === 'business' && !isProvider) return 'account'
+      return raw
+    }
+    return 'account'
+  }, [searchParams, isProvider])
+
+  const setSection = (next: SettingsSection) => {
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev)
+      if (next === 'account') p.delete('section')
+      else p.set('section', next)
+      return p
+    })
+  }
+
+  const navItems: { id: SettingsSection; icon: React.ReactNode }[] = useMemo(
+    () => [
+      { id: 'account', icon: <User className="size-4 shrink-0" /> },
+      { id: 'privacy', icon: <Shield className="size-4 shrink-0" /> },
+      { id: 'security', icon: <Lock className="size-4 shrink-0" /> },
+      ...(isProvider ? [{ id: 'business' as const, icon: <Briefcase className="size-4 shrink-0" /> }] : []),
+    ],
+    [isProvider]
+  )
+
+  const providerListingReady = useMemo(() => {
+    if (!isProvider || !provider) return true
+    return isProviderListingComplete({
+      description: provider.description,
+      services: services.map((s) => ({ is_active: s.is_active })),
+    })
+  }, [isProvider, provider, services])
 
   useEffect(() => {
     if (profile) {
@@ -133,26 +196,26 @@ export function Profile() {
     fetchProviderData()
   }, [user?.id, profile?.role])
 
-  const handleSaveProfile = async () => {
-    if (!user || !profile) return
-    setError(null)
-    setSuccess(null)
-
+  const validatePersonalFields = () => {
     if (!fullName.trim() || fullName.trim().length < 2) {
       setError('Full name must be at least 2 characters')
-      return
+      return false
     }
     if (phone) {
       const cleaned = phone.replace(/[\s()+-]/g, '')
       if (!/^(267)?[0-9]{8}$/.test(cleaned)) {
         setError('Enter a valid Botswana phone number (e.g. +267 71 234 567)')
-        return
+        return false
       }
     }
-    if (profile.role === 'provider' && !businessName.trim()) {
-      setError('Business name is required for providers')
-      return
-    }
+    return true
+  }
+
+  const handleSaveAccount = async () => {
+    if (!user || !profile) return
+    setError(null)
+    setSuccess(null)
+    if (!validatePersonalFields()) return
 
     setSaving(true)
     try {
@@ -163,31 +226,82 @@ export function Profile() {
         bio: bio.trim() || null,
       })
       if (profileError) throw new Error(profileError)
-
-      if (profile.role === 'provider') {
-        if (provider) {
-          const { error: providerError } = await supabase
-            .from('service_providers')
-            .update({ business_name: businessName.trim(), description: businessDescription.trim() || null } as never)
-            .eq('id', provider.id)
-          if (providerError) throw new Error(providerError.message)
-        } else {
-          const { data: newProvider, error: providerError } = await supabase
-            .from('service_providers')
-            .insert({ profile_id: user.id, business_name: businessName.trim() || profile.full_name || 'My Business', description: businessDescription.trim() || null } as never)
-            .select()
-            .single()
-          if (providerError) throw new Error(providerError.message)
-          setProvider(newProvider as ServiceProvider)
-        }
-      }
-
       await refreshProfile()
       setSuccess('Profile saved successfully')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save profile')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSaveBusiness = async () => {
+    if (!user || !profile || profile.role !== 'provider') return
+    setError(null)
+    setSuccess(null)
+    if (!businessName.trim()) {
+      setError('Business name is required for providers')
+      return
+    }
+
+    setSavingBusiness(true)
+    try {
+      if (provider) {
+        const { error: providerError } = await supabase
+          .from('service_providers')
+          .update({ business_name: businessName.trim(), description: businessDescription.trim() || null } as never)
+          .eq('id', provider.id)
+        if (providerError) throw new Error(providerError.message)
+      } else {
+        const { data: newProvider, error: providerError } = await supabase
+          .from('service_providers')
+          .insert({
+            profile_id: user.id,
+            business_name: businessName.trim() || profile.full_name || 'My Business',
+            description: businessDescription.trim() || null,
+          } as never)
+          .select()
+          .single()
+        if (providerError) throw new Error(providerError.message)
+        setProvider(newProvider as ServiceProvider)
+      }
+      await refreshProfile()
+      setSuccess('Business profile saved successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save business profile')
+    } finally {
+      setSavingBusiness(false)
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordFieldError(null)
+    setError(null)
+    setSuccess(null)
+    if (newPassword.length < 6) {
+      setPasswordFieldError('New password must be at least 6 characters')
+      return
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordFieldError('New passwords do not match')
+      return
+    }
+    setPasswordSaving(true)
+    try {
+      const { error: pwErr } = await changePassword(currentPassword, newPassword)
+      if (pwErr) {
+        setError(pwErr)
+        return
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      setSuccess('Password updated successfully')
+    } catch {
+      setError('Unable to update password. Please try again.')
+    } finally {
+      setPasswordSaving(false)
     }
   }
 
@@ -226,6 +340,42 @@ export function Profile() {
     }
   }
 
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file')
+      return
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setError('Banner image must be less than 3MB')
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+      return
+    }
+
+    setBannerUploading(true)
+    setError(null)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const path = `${user.id}/banner-${Date.now()}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true })
+      if (uploadError) throw uploadError
+
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const { error: updateError } = await updateProfile({ banner_url: urlData.publicUrl })
+      if (updateError) throw new Error(updateError)
+      await refreshProfile()
+      setSuccess('Banner updated')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload banner')
+    } finally {
+      setBannerUploading(false)
+      if (bannerInputRef.current) bannerInputRef.current.value = ''
+    }
+  }
+
   if (authLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -239,10 +389,10 @@ export function Profile() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Profile</h1>
-        <p className="mt-1 text-gray-600">Manage your account and preferences</p>
+        <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">Settings</h1>
+        <p className="mt-1 text-gray-600">Manage your account, privacy, and security</p>
       </div>
 
       {error && (
@@ -252,85 +402,303 @@ export function Profile() {
         <div className="rounded-lg bg-success-50 p-4 text-sm text-success-600">{success}</div>
       )}
 
-      {/* Avatar */}
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleAvatarUpload}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={avatarUploading}
-            className="group relative"
-          >
-            <Avatar
-              src={profile.avatar_url}
-              fallback={profile.full_name || '?'}
-              size="xl"
-            />
-            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-              {avatarUploading ? (
-                <Spinner size="md" className="border-white" />
-              ) : (
-                <Camera className="size-8 text-white" />
-              )}
-            </span>
-          </button>
-          <div className="flex-1 text-center sm:text-left">
-            <p className="font-medium text-gray-900">Profile photo</p>
-            <p className="text-sm text-gray-500">
-              Click to upload a new photo. JPG, PNG or GIF. Max 2MB.
-            </p>
+      {isProvider && provider && !providerListingReady && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="flex gap-3">
+            <Info className="size-5 shrink-0 text-amber-700" aria-hidden />
+            <div>
+              <p className="font-semibold text-amber-900">Listing incomplete</p>
+              <p className="mt-1 text-amber-900/90">{PROVIDER_LISTING_REQUIREMENTS_SHORT}</p>
+              <button
+                type="button"
+                onClick={() => setSection('business')}
+                className="mt-2 font-medium text-primary-700 underline hover:text-primary-800"
+              >
+                Open Business settings
+              </button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
-      {/* Basic info */}
-      <Card>
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Basic Information</h2>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Input
-            label="Full Name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Your full name"
-          />
-          <Input
-            label="Phone"
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+267 XX XXX XXXX"
-          />
-          <Select
-            label="City"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            options={[
-              { value: '', label: 'Select city' },
-              ...CITIES.map((c) => ({ value: c, label: c })),
-            ]}
-          />
-          <Textarea
-            label="Bio / Description"
-            value={bio}
-            onChange={(e) => setBio(e.target.value)}
-            placeholder="Tell us a bit about yourself"
-            rows={4}
-          />
-        </CardContent>
-      </Card>
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-start lg:gap-10">
+        <nav
+          className="flex gap-2 overflow-x-auto pb-1 lg:w-52 lg:flex-shrink-0 lg:flex-col lg:overflow-visible lg:pb-0"
+          aria-label="Settings sections"
+        >
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setSection(item.id)}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors whitespace-nowrap lg:whitespace-normal ${
+                section === item.id
+                  ? 'bg-primary-50 text-primary-800 ring-1 ring-primary-200'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              }`}
+            >
+              {item.icon}
+              {SECTION_LABELS[item.id]}
+            </button>
+          ))}
+        </nav>
 
-      {/* Provider section */}
-      {profile.role === 'provider' && (
-        <>
+        <div className="min-w-0 flex-1 space-y-6">
+          {section === 'account' && (
+            <>
+              <Card className="overflow-hidden p-0">
+                <div className="relative">
+                  <input
+                    ref={bannerInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleBannerUpload}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                  <div className="relative h-36 sm:h-44">
+                    {profile.banner_url ? (
+                      <img
+                        src={profile.banner_url}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-gradient-to-br from-primary-100 via-accent-50 to-primary-50" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent pointer-events-none" />
+                    <button
+                      type="button"
+                      onClick={() => bannerInputRef.current?.click()}
+                      disabled={bannerUploading}
+                      className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition-colors hover:bg-black/60 disabled:opacity-60"
+                    >
+                      {bannerUploading ? (
+                        <Spinner size="sm" className="border-white" />
+                      ) : (
+                        <ImageIcon className="size-3.5" />
+                      )}
+                      Banner
+                    </button>
+                  </div>
+                  <div className="relative -mt-14 flex justify-center px-4 sm:-mt-16 sm:justify-start sm:px-8">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={avatarUploading}
+                      className="group relative rounded-full ring-4 ring-white shadow-md"
+                    >
+                      <Avatar
+                        src={profile.avatar_url}
+                        fallback={profile.full_name || '?'}
+                        size="xl"
+                      />
+                      <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                        {avatarUploading ? (
+                          <Spinner size="md" className="border-white" />
+                        ) : (
+                          <Camera className="size-8 text-white" />
+                        )}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="px-4 pb-4 pt-3 text-center sm:px-8 sm:text-left">
+                    <p className="font-semibold text-gray-900">{profile.full_name}</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Banner and profile photo — JPG, PNG or GIF. Photo max 2MB.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <h2 className="text-lg font-semibold text-gray-900">Basic information</h2>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Input
+                    label="Full Name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Your full name"
+                  />
+                  <Input
+                    label="Phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+267 XX XXX XXXX"
+                  />
+                  <Select
+                    label="City"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    options={[
+                      { value: '', label: 'Select city' },
+                      ...CITIES.map((c) => ({ value: c, label: c })),
+                    ]}
+                  />
+                  <Textarea
+                    label="Bio / Description"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                    placeholder="Tell us a bit about yourself"
+                    rows={4}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <h2 className="text-lg font-semibold text-gray-900">Account details</h2>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Email</label>
+                    <p className="mt-1 text-gray-900">{user.email}</p>
+                    <p className="text-sm text-gray-500">Email cannot be changed here</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-gray-700">Role</span>
+                    <Badge
+                      variant={
+                        profile.role === 'admin'
+                          ? 'danger'
+                          : profile.role === 'provider'
+                            ? 'primary'
+                            : 'default'
+                      }
+                    >
+                      {profile.role}
+                    </Badge>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Member since</label>
+                    <p className="mt-1 text-gray-900">{formatDate(profile.created_at)}</p>
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button
+                    variant="primary"
+                    icon={<Save className="size-4" />}
+                    loading={saving}
+                    onClick={handleSaveAccount}
+                  >
+                    Save changes
+                  </Button>
+                </CardFooter>
+              </Card>
+            </>
+          )}
+
+          {section === 'privacy' && (
+            <Card>
+              <CardHeader>
+                <h2 className="text-lg font-semibold text-gray-900">Privacy</h2>
+                <p className="text-sm text-gray-500">
+                  Control how your information is used on QuickConnect
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4 text-sm text-gray-600">
+                <p>
+                  We use your profile and activity to run the marketplace — for example showing your
+                  services to customers, enabling bookings, and notifications you opt into.
+                </p>
+                <ul className="list-disc space-y-2 pl-5">
+                  <li>Your public provider profile is visible to customers when you offer services.</li>
+                  <li>Messages are shared between you and the people you chat with.</li>
+                  <li>You can request account help or data questions through support.</li>
+                </ul>
+                <p className="text-gray-500">
+                  Full legal text can live in your Terms and Privacy Policy pages when those are
+                  published.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {section === 'security' && (
+            <>
+              <Card>
+                <CardHeader>
+                  <h2 className="text-lg font-semibold text-gray-900">Sign-in email</h2>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-900">{user.email}</p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    To change email, contact support or use your provider dashboard settings when
+                    available.
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <h2 className="text-lg font-semibold text-gray-900">Password</h2>
+                  <p className="text-sm text-gray-500">Use a strong password you don&apos;t use elsewhere</p>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleChangePassword} className="space-y-4">
+                    {passwordFieldError && (
+                      <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
+                        {passwordFieldError}
+                      </div>
+                    )}
+                    <Input
+                      label="Current password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(e) => {
+                        setCurrentPassword(e.target.value)
+                        setPasswordFieldError(null)
+                      }}
+                    />
+                    <Input
+                      label="New password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value)
+                        setPasswordFieldError(null)
+                      }}
+                    />
+                    <Input
+                      label="Confirm new password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmNewPassword}
+                      onChange={(e) => {
+                        setConfirmNewPassword(e.target.value)
+                        setPasswordFieldError(null)
+                      }}
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button type="submit" loading={passwordSaving}>
+                        Update password
+                      </Button>
+                      <Link
+                        to={ROUTES.FORGOT_PASSWORD}
+                        className="text-sm font-medium text-primary-600 hover:text-primary-700"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </>
+          )}
+
+          {section === 'business' && profile.role === 'provider' && (
+            <>
           <Card>
             <CardHeader>
               <h2 className="text-lg font-semibold text-gray-900">Business Information</h2>
@@ -350,6 +718,16 @@ export function Profile() {
                 rows={4}
               />
             </CardContent>
+            <CardFooter>
+              <Button
+                variant="primary"
+                icon={<Save className="size-4" />}
+                loading={savingBusiness}
+                onClick={handleSaveBusiness}
+              >
+                Save business profile
+              </Button>
+            </CardFooter>
           </Card>
 
           {/* Services */}
@@ -512,7 +890,13 @@ export function Profile() {
               )}
             </CardContent>
           </Card>
+        </>
+      )}
+        </div>
+      </div>
 
+      {profile.role === 'provider' && (
+        <>
           <ServiceModal
             isOpen={serviceModalOpen}
             onClose={() => {
@@ -570,49 +954,6 @@ export function Profile() {
           />
         </>
       )}
-
-      {/* Account section */}
-      <Card>
-        <CardHeader>
-          <h2 className="text-lg font-semibold text-gray-900">Account</h2>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Email</label>
-            <p className="mt-1 text-gray-900">{user.email}</p>
-            <p className="text-sm text-gray-500">Email cannot be changed</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-700">Role:</span>
-            <Badge
-              variant={
-                profile.role === 'admin'
-                  ? 'danger'
-                  : profile.role === 'provider'
-                    ? 'primary'
-                    : 'default'
-              }
-            >
-              {profile.role}
-            </Badge>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Member since</label>
-            <p className="mt-1 text-gray-900">{formatDate(profile.created_at)}</p>
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button
-            variant="primary"
-            icon={<Save className="size-4" />}
-            loading={saving}
-            onClick={handleSaveProfile}
-          >
-            Save Changes
-          </Button>
-        </CardFooter>
-      </Card>
-
     </div>
   )
 }

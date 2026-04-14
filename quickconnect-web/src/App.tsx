@@ -7,6 +7,8 @@ import { SplashScreen } from '@/components/ui/SplashScreen'
 import { Home } from '@/pages/Home'
 import { Login } from '@/pages/Login'
 import { Register } from '@/pages/Register'
+import { ForgotPassword } from '@/pages/ForgotPassword'
+import { ResetPassword } from '@/pages/ResetPassword'
 import { AdminCategories } from '@/pages/admin/AdminCategories'
 import { Dashboard } from '@/pages/Dashboard'
 import { Profile } from '@/pages/Profile'
@@ -47,6 +49,8 @@ function App() {
               <Route path={ROUTES.HOME} element={<Home />} />
               <Route path={ROUTES.LOGIN} element={<Login />} />
               <Route path={ROUTES.REGISTER} element={<Register />} />
+              <Route path={ROUTES.FORGOT_PASSWORD} element={<ForgotPassword />} />
+              <Route path={ROUTES.RESET_PASSWORD} element={<ResetPassword />} />
               <Route path={ROUTES.LOOKING_FOR} element={<LookingFor />} />
               <Route path={ROUTES.CREATE_POST} element={<CreatePost />} />
               <Route path={ROUTES.POST_DETAIL} element={<PostDetail />} />

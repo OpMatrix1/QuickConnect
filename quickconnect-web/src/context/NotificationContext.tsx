@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, useCallback, type React
 import { supabase } from '@/lib/supabase'
 import { useAuth } from './AuthContext'
 import type { Notification } from '@/lib/types'
+import { syncPushSubscriptionToProfile } from '@/lib/webPush'
 
 interface NotificationContextType {
   notifications: Notification[]
@@ -38,6 +39,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchNotifications()
   }, [fetchNotifications])
+
+  useEffect(() => {
+    if (!user?.id) return
+    syncPushSubscriptionToProfile(user.id).catch(() => {})
+  }, [user?.id])
 
   useEffect(() => {
     if (!user) return

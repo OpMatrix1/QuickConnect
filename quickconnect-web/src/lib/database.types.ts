@@ -10,6 +10,7 @@ export type Database = {
           full_name: string
           phone: string | null
           avatar_url: string | null
+          banner_url: string | null
           city: string | null
           bio: string | null
           location: unknown | null
@@ -25,6 +26,7 @@ export type Database = {
           full_name: string
           phone?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           city?: string | null
           bio?: string | null
           location?: unknown | null
@@ -40,6 +42,7 @@ export type Database = {
           full_name?: string
           phone?: string | null
           avatar_url?: string | null
+          banner_url?: string | null
           city?: string | null
           bio?: string | null
           location?: unknown | null
@@ -719,6 +722,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          endpoint: string
+          user_id: string
+          p256dh: string
+          auth: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          endpoint: string
+          user_id: string
+          p256dh: string
+          auth: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          endpoint?: string
+          user_id?: string
+          p256dh?: string
+          auth?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"

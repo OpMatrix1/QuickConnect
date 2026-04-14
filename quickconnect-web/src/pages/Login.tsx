@@ -140,9 +140,9 @@ export function Login() {
                 />
                 <span className="text-sm text-gray-600">Remember me</span>
               </label>
-              <a href="#" className="text-sm font-medium text-primary-600 hover:text-primary-700">
+              <Link to={ROUTES.FORGOT_PASSWORD} className="text-sm font-medium text-primary-600 hover:text-primary-700">
                 Forgot password?
-              </a>
+              </Link>
             </div>
 
             <Button

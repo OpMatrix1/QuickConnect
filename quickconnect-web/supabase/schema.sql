@@ -18,6 +18,7 @@ CREATE TABLE public.profiles (
   full_name TEXT NOT NULL,
   phone TEXT,
   avatar_url TEXT,
+  banner_url TEXT,
   city TEXT,
   bio TEXT,
   location GEOGRAPHY(POINT, 4326),
@@ -203,6 +204,16 @@ CREATE TABLE public.notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- push_subscriptions (Web Push — one row per browser endpoint)
+CREATE TABLE public.push_subscriptions (
+  endpoint TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- =============================================================================
 -- INDEXES
 -- =============================================================================
@@ -269,6 +280,8 @@ CREATE INDEX idx_category_requests_status ON public.category_requests(status);
 -- notifications
 CREATE INDEX idx_notifications_user_id ON public.notifications(user_id);
 CREATE INDEX idx_notifications_is_read ON public.notifications(user_id, is_read);
+
+CREATE INDEX idx_push_subscriptions_user_id ON public.push_subscriptions(user_id);
 
 -- =============================================================================
 -- TRIGGER FUNCTIONS
@@ -379,6 +392,10 @@ CREATE TRIGGER set_payments_updated_at
   BEFORE UPDATE ON public.payments
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+CREATE TRIGGER set_push_subscriptions_updated_at
+  BEFORE UPDATE ON public.push_subscriptions
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- Auto-create profile on auth.users insert
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -411,6 +428,7 @@ ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- profiles: viewable by everyone, owner can UPDATE
 CREATE POLICY "profiles_select_all" ON public.profiles
@@ -593,6 +611,18 @@ CREATE POLICY "notifications_update_owner" ON public.notifications
 -- notifications: INSERT allowed for self (system notifications use service role)
 CREATE POLICY "notifications_insert_owner" ON public.notifications
   FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "push_subscriptions_select_own" ON public.push_subscriptions
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "push_subscriptions_insert_own" ON public.push_subscriptions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "push_subscriptions_update_own" ON public.push_subscriptions
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "push_subscriptions_delete_own" ON public.push_subscriptions
+  FOR DELETE USING (auth.uid() = user_id);
 
 -- service_categories: viewable by everyone, admin can INSERT/UPDATE/DELETE
 CREATE POLICY "service_categories_select_all" ON public.service_categories
