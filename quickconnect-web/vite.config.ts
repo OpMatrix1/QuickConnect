@@ -83,6 +83,36 @@ export default defineConfig({
               },
             },
           },
+          {
+            // Default provider avatars (migration / profile fallbacks)
+            urlPattern: /^https:\/\/ui-avatars\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'ui-avatars-cache',
+              expiration: {
+                maxEntries: 200,
+                maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // Default category banner placeholders
+            urlPattern: /^https:\/\/placehold\.co\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'placehold-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 7,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
         ],
       },
       devOptions: {
