@@ -551,6 +551,10 @@ export type Database = {
           transaction_ref: string | null
           customer_confirmed: boolean
           provider_confirmed: boolean
+          dispute_customer_statement: string | null
+          dispute_provider_statement: string | null
+          dispute_initiated_by: 'customer' | 'provider' | null
+          dispute_opened_at: string | null
           created_at: string
           updated_at: string
         }
@@ -563,6 +567,10 @@ export type Database = {
           transaction_ref?: string | null
           customer_confirmed?: boolean
           provider_confirmed?: boolean
+          dispute_customer_statement?: string | null
+          dispute_provider_statement?: string | null
+          dispute_initiated_by?: 'customer' | 'provider' | null
+          dispute_opened_at?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -575,6 +583,10 @@ export type Database = {
           transaction_ref?: string | null
           customer_confirmed?: boolean
           provider_confirmed?: boolean
+          dispute_customer_statement?: string | null
+          dispute_provider_statement?: string | null
+          dispute_initiated_by?: 'customer' | 'provider' | null
+          dispute_opened_at?: string | null
         }
         Relationships: [
           {

@@ -26,6 +26,8 @@ import {
   EmptyState,
   Badge,
   Button,
+  Input,
+  Modal,
 } from '@/components/ui'
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -41,10 +43,15 @@ interface DisputedPayment {
   status: string
   created_at: string
   booking_id: string
+  dispute_customer_statement: string | null
+  dispute_provider_statement: string | null
+  dispute_initiated_by: string | null
+  dispute_opened_at: string | null
   bookings: {
     customer_id: string
     profiles: { full_name: string } | null
     service_providers: {
+      profile_id: string
       profiles: { full_name: string } | null
     } | null
   } | null
@@ -85,6 +92,8 @@ export function AdminReports() {
   const [disputedPayments, setDisputedPayments] = useState<DisputedPayment[]>([])
   const [disputeActionLoading, setDisputeActionLoading] = useState<string | null>(null)
   const [disputeError, setDisputeError] = useState<string | null>(null)
+  const [walletBalancesByUserId, setWalletBalancesByUserId] = useState<Record<string, number>>({})
+  const [debitModal, setDebitModal] = useState<{ paymentId: string; amount: string } | null>(null)
 
   interface UserReport {
     id: string
@@ -131,10 +140,15 @@ export function AdminReports() {
       .from('payments')
       .select(`
         id, amount, status, created_at, booking_id,
+        dispute_customer_statement,
+        dispute_provider_statement,
+        dispute_initiated_by,
+        dispute_opened_at,
         bookings(
           customer_id,
           profiles!bookings_customer_id_fkey(full_name),
           service_providers!bookings_provider_id_fkey(
+            profile_id,
             profiles!service_providers_profile_id_fkey(full_name)
           )
         )
@@ -143,6 +157,31 @@ export function AdminReports() {
       .order('created_at', { ascending: false })
     setDisputedPayments((data ?? []) as unknown as DisputedPayment[])
   }
+
+  useEffect(() => {
+    if (disputedPayments.length === 0) {
+      setWalletBalancesByUserId({})
+      return
+    }
+    const ids = new Set<string>()
+    for (const p of disputedPayments) {
+      const b = p.bookings
+      if (!b) continue
+      ids.add(b.customer_id)
+      const pid = b.service_providers?.profile_id
+      if (pid) ids.add(pid)
+    }
+    const list = [...ids]
+    if (list.length === 0) return
+    void (async () => {
+      const { data } = await supabase.from('wallets').select('user_id, balance').in('user_id', list)
+      const map: Record<string, number> = {}
+      ;(data ?? []).forEach((w: { user_id: string; balance: number }) => {
+        map[w.user_id] = w.balance
+      })
+      setWalletBalancesByUserId(map)
+    })()
+  }, [disputedPayments])
 
   useEffect(() => {
     if (!highlightPaymentId || disputedPayments.length === 0) return
@@ -155,6 +194,30 @@ export function AdminReports() {
     }, 350)
     return () => window.clearTimeout(t)
   }, [highlightPaymentId, disputedPayments])
+
+  const handleDebitCustomer = async () => {
+    if (!debitModal) return
+    const amt = parseFloat(debitModal.amount)
+    if (!Number.isFinite(amt) || amt <= 0) {
+      setDisputeError('Enter a valid positive amount.')
+      return
+    }
+    setDisputeActionLoading(debitModal.paymentId + 'debit')
+    setDisputeError(null)
+    try {
+      const { error } = await supabase.rpc('admin_dispute_debit_customer', {
+        p_payment_id: debitModal.paymentId,
+        p_amount: amt,
+      } as never)
+      if (error) throw error
+      setDebitModal(null)
+      await fetchDisputedPayments()
+    } catch (err) {
+      setDisputeError(err instanceof Error ? err.message : 'Debit failed')
+    } finally {
+      setDisputeActionLoading(null)
+    }
+  }
 
   const handleDisputeAction = async (paymentId: string, action: 'refund' | 'release') => {
     setDisputeActionLoading(paymentId + action)
@@ -676,7 +739,8 @@ export function AdminReports() {
           Payments Requiring Attention
         </h2>
         <p className="mb-4 text-sm text-gray-500">
-          Disputed payments and held payments awaiting confirmation. You can refund the customer or release funds to the provider.
+          Review each party&apos;s story and both wallet balances before refunding, releasing escrow, or applying a
+          customer debit. Wallets may show a negative balance after a debit until the customer tops up.
         </p>
 
         {disputeError && (
@@ -700,54 +764,140 @@ export function AdminReports() {
                 const providerName =
                   (p.bookings?.service_providers?.profiles as { full_name: string } | null)
                     ?.full_name ?? 'Provider'
+                const custId = p.bookings?.customer_id
+                const provProfileId = p.bookings?.service_providers?.profile_id
+                const custBal =
+                  custId !== undefined ? walletBalancesByUserId[custId] : undefined
+                const provBal =
+                  provProfileId !== undefined ? walletBalancesByUserId[provProfileId] : undefined
                 return (
                   <li
                     key={p.id}
                     id={`admin-dispute-${p.id}`}
-                    className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between scroll-mt-24 ${
+                    className={`flex flex-col gap-4 px-5 py-4 scroll-mt-24 ${
                       highlightPaymentId === p.id
                         ? 'bg-primary-50/60 ring-2 ring-inset ring-primary-200'
                         : ''
                     }`}
                   >
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={p.status === 'disputed' ? 'danger' : 'warning'}>
-                          {p.status === 'disputed' ? 'Disputed' : 'Held'}
-                        </Badge>
-                        <span className="text-base font-semibold text-gray-900">
-                          {formatCurrency(p.amount)}
-                        </span>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <Badge variant={p.status === 'disputed' ? 'danger' : 'warning'}>
+                            {p.status === 'disputed' ? 'Disputed' : 'Held'}
+                          </Badge>
+                          <span className="text-base font-semibold text-gray-900">
+                            Escrow {formatCurrency(p.amount)}
+                          </span>
+                          {p.dispute_initiated_by && (
+                            <span className="text-xs text-gray-500">
+                              Opened by {p.dispute_initiated_by}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Customer: <strong>{customerName}</strong> &rarr; Provider:{' '}
+                          <strong>{providerName}</strong>
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          Payment {new Date(p.created_at).toLocaleDateString('en-BW', {
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                          {p.dispute_opened_at && (
+                            <>
+                              {' '}
+                              · Dispute{' '}
+                              {new Date(p.dispute_opened_at).toLocaleString('en-BW', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </>
+                          )}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                          <div
+                            className={`rounded-lg border px-3 py-2 ${
+                              custBal !== undefined && custBal < 0
+                                ? 'border-warning-300 bg-warning-50'
+                                : 'border-gray-200 bg-white'
+                            }`}
+                          >
+                            <span className="text-gray-500">Customer wallet</span>{' '}
+                            <span className="font-semibold text-gray-900">
+                              {custBal !== undefined ? formatCurrency(custBal) : '—'}
+                            </span>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                            <span className="text-gray-500">Provider wallet</span>{' '}
+                            <span className="font-semibold text-gray-900">
+                              {provBal !== undefined ? formatCurrency(provBal) : '—'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-gray-600">
-                        Customer: <strong>{customerName}</strong> &rarr; Provider: <strong>{providerName}</strong>
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {new Date(p.created_at).toLocaleDateString('en-BW', {
-                          day: 'numeric', month: 'short', year: 'numeric'
-                        })}
-                      </p>
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<RotateCcw className="size-4" />}
+                          loading={disputeActionLoading === p.id + 'refund'}
+                          onClick={() => handleDisputeAction(p.id, 'refund')}
+                          className="text-danger-600 border-danger-300 hover:bg-danger-50"
+                        >
+                          Refund Customer
+                        </Button>
+                        <Button
+                          size="sm"
+                          icon={<Check className="size-4" />}
+                          loading={disputeActionLoading === p.id + 'release'}
+                          onClick={() => handleDisputeAction(p.id, 'release')}
+                        >
+                          Release to Provider
+                        </Button>
+                        {p.status === 'disputed' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            loading={disputeActionLoading === p.id + 'debit'}
+                            onClick={() => setDebitModal({ paymentId: p.id, amount: '' })}
+                          >
+                            Debit customer…
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        icon={<RotateCcw className="size-4" />}
-                        loading={disputeActionLoading === p.id + 'refund'}
-                        onClick={() => handleDisputeAction(p.id, 'refund')}
-                        className="text-danger-600 border-danger-300 hover:bg-danger-50"
-                      >
-                        Refund Customer
-                      </Button>
-                      <Button
-                        size="sm"
-                        icon={<Check className="size-4" />}
-                        loading={disputeActionLoading === p.id + 'release'}
-                        onClick={() => handleDisputeAction(p.id, 'release')}
-                      >
-                        Release to Provider
-                      </Button>
-                    </div>
+                    {(p.dispute_customer_statement || p.dispute_provider_statement) && (
+                      <div className="grid gap-3 border-t border-gray-100 pt-3 sm:grid-cols-2">
+                        {p.dispute_customer_statement && (
+                          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                            <p className="font-semibold text-gray-800">Customer says</p>
+                            <p className="mt-1 whitespace-pre-wrap text-gray-700">
+                              {p.dispute_customer_statement}
+                            </p>
+                          </div>
+                        )}
+                        {p.dispute_provider_statement && (
+                          <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                            <p className="font-semibold text-gray-800">Provider says</p>
+                            <p className="mt-1 whitespace-pre-wrap text-gray-700">
+                              {p.dispute_provider_statement}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {p.status === 'disputed' &&
+                      !p.dispute_customer_statement &&
+                      !p.dispute_provider_statement && (
+                        <p className="text-xs text-warning-700">
+                          No written statements yet — ask parties to add their side under My Bookings, or proceed using
+                          balances and escrow only.
+                        </p>
+                      )}
                   </li>
                 )
               })}
@@ -755,6 +905,44 @@ export function AdminReports() {
           </Card>
         )}
       </section>
+
+      <Modal
+        isOpen={!!debitModal}
+        onClose={() => setDebitModal(null)}
+        title="Debit customer wallet"
+        size="sm"
+      >
+        {debitModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Debits this booking&apos;s customer wallet by the amount below. The balance may become negative until
+              they top up. Use only when fair after reading both parties&apos; statements and wallet balances.
+            </p>
+            <Input
+              label="Amount (BWP)"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={debitModal.amount}
+              onChange={(e) =>
+                setDebitModal((d) => (d ? { ...d, amount: e.target.value } : null))
+              }
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDebitModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void handleDebitCustomer()}
+                loading={disputeActionLoading === debitModal.paymentId + 'debit'}
+              >
+                Apply debit
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

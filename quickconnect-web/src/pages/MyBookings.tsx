@@ -50,7 +50,16 @@ interface BookingWithDetails extends Booking {
   profiles?: { full_name: string; avatar_url: string | null }
   services?: { title: string } | null
   looking_for_responses?: { looking_for_posts: { title: string } } | null
-  payments?: { id: string; status: PaymentStatus; customer_confirmed: boolean; provider_confirmed: boolean }[]
+  payments?: {
+    id: string
+    status: PaymentStatus
+    customer_confirmed: boolean
+    provider_confirmed: boolean
+    dispute_customer_statement?: string | null
+    dispute_provider_statement?: string | null
+    dispute_initiated_by?: 'customer' | 'provider' | null
+    dispute_opened_at?: string | null
+  }[]
   reviews?: { id: string }[]
 }
 
@@ -93,7 +102,9 @@ async function mergePaymentsIntoBookings(
   const ids = rows.map((b) => b.id)
   const { data: payRows, error } = await supabase
     .from('payments')
-    .select('id, booking_id, status, customer_confirmed, provider_confirmed')
+    .select(
+      'id, booking_id, status, customer_confirmed, provider_confirmed, dispute_customer_statement, dispute_provider_statement, dispute_initiated_by, dispute_opened_at'
+    )
     .in('booking_id', ids)
 
   if (error || !payRows?.length) return rows
@@ -106,12 +117,20 @@ async function mergePaymentsIntoBookings(
       status: PaymentStatus
       customer_confirmed: boolean
       provider_confirmed: boolean
+      dispute_customer_statement: string | null
+      dispute_provider_statement: string | null
+      dispute_initiated_by: 'customer' | 'provider' | null
+      dispute_opened_at: string | null
     }
     const row = {
       id: p.id,
       status: p.status,
       customer_confirmed: p.customer_confirmed,
       provider_confirmed: p.provider_confirmed,
+      dispute_customer_statement: p.dispute_customer_statement,
+      dispute_provider_statement: p.dispute_provider_statement,
+      dispute_initiated_by: p.dispute_initiated_by,
+      dispute_opened_at: p.dispute_opened_at,
     }
     const cur = byBooking.get(p.booking_id)
     if (cur) cur.push(row)
@@ -137,6 +156,9 @@ export function MyBookings() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [reviewModal, setReviewModal] = useState<BookingWithDetails | null>(null)
   const [paymentModal, setPaymentModal] = useState<BookingWithDetails | null>(null)
+  const [disputeModal, setDisputeModal] = useState<BookingWithDetails | null>(null)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeResponseText, setDisputeResponseText] = useState<Record<string, string>>({})
   const [editModal, setEditModal] = useState<BookingWithDetails | null>(null)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
@@ -412,21 +434,75 @@ export function MyBookings() {
     }
   }
 
-  const disputePayment = async (bookingId: string) => {
-    if (!user) return
-    setActionLoading(bookingId)
+  const openDisputeModal = (booking: BookingWithDetails) => {
+    setDisputeReason('')
+    setDisputeModal(booking)
+  }
+
+  const submitDispute = async () => {
+    if (!disputeModal || !user) return
+    const text = disputeReason.trim()
+    if (text.length < 20) {
+      setError('Please explain what happened in at least 20 characters so an admin can review fairly.')
+      return
+    }
+    const payment = disputeModal.payments?.[0]
+    if (!payment) return
+    setActionLoading(disputeModal.id)
+    setError(null)
     try {
-      const booking = bookings.find((b) => b.id === bookingId)
-      const payment = booking?.payments?.[0]
-      if (!payment) return
+      const field = isProvider ? 'dispute_provider_statement' : 'dispute_customer_statement'
       const { error } = await supabase
         .from('payments')
-        .update({ status: 'disputed' } as any)
+        .update({
+          status: 'disputed',
+          dispute_initiated_by: isProvider ? 'provider' : 'customer',
+          dispute_opened_at: new Date().toISOString(),
+          [field]: text,
+        } as never)
         .eq('id' as any, payment.id as any)
       if (error) throw error
+      setDisputeModal(null)
+      setDisputeReason('')
       await fetchBookings()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to dispute')
+      setError(err instanceof Error ? err.message : 'Failed to open dispute')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const submitDisputeSide = async (bookingId: string) => {
+    if (!user) return
+    const booking = bookings.find((b) => b.id === bookingId)
+    const payment = booking?.payments?.[0]
+    if (!payment) return
+    const key = isProvider ? 'dispute_provider_statement' : 'dispute_customer_statement'
+    const existing = isProvider
+      ? payment.dispute_provider_statement
+      : payment.dispute_customer_statement
+    if (existing) return
+    const text = (disputeResponseText[bookingId] ?? '').trim()
+    if (text.length < 20) {
+      setError('Please add at least 20 characters describing your side.')
+      return
+    }
+    setActionLoading(bookingId)
+    setError(null)
+    try {
+      const { error } = await supabase
+        .from('payments')
+        .update({ [key]: text } as never)
+        .eq('id' as any, payment.id as any)
+      if (error) throw error
+      setDisputeResponseText((prev) => {
+        const next = { ...prev }
+        delete next[bookingId]
+        return next
+      })
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
       setActionLoading(null)
     }
@@ -769,7 +845,7 @@ export function MyBookings() {
                               icon={<AlertCircle className="size-4" />}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                disputePayment(booking.id)
+                                openDisputeModal(booking)
                               }}
                               loading={actionLoading === booking.id}
                             >
@@ -783,7 +859,86 @@ export function MyBookings() {
                         <Badge variant="success">Payment Released to Provider</Badge>
                       )}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'disputed' && (
-                        <Badge variant="danger">Payment Disputed — Admin Reviewing</Badge>
+                        <div className="flex w-full basis-full flex-col gap-3 border-t border-gray-200 pt-3">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="danger">Payment disputed — admin reviewing</Badge>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            An admin will review both sides before releasing or refunding escrow. Be honest and specific.
+                          </p>
+                          {booking.payments[0].dispute_customer_statement && (
+                            <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                              <p className="font-semibold text-gray-800">Customer</p>
+                              <p className="mt-1 whitespace-pre-wrap text-gray-700">
+                                {booking.payments[0].dispute_customer_statement}
+                              </p>
+                            </div>
+                          )}
+                          {booking.payments[0].dispute_provider_statement && (
+                            <div className="rounded-lg bg-gray-50 p-3 text-sm">
+                              <p className="font-semibold text-gray-800">Provider</p>
+                              <p className="mt-1 whitespace-pre-wrap text-gray-700">
+                                {booking.payments[0].dispute_provider_statement}
+                              </p>
+                            </div>
+                          )}
+                          {!isProvider &&
+                            !booking.payments[0].dispute_customer_statement &&
+                            booking.payments[0].dispute_provider_statement && (
+                              <div className="space-y-2">
+                                <Textarea
+                                  label="Your side of the story (customer)"
+                                  value={disputeResponseText[booking.id] ?? ''}
+                                  onChange={(e) =>
+                                    setDisputeResponseText((prev) => ({
+                                      ...prev,
+                                      [booking.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Explain what happened from your perspective…"
+                                  rows={4}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    void submitDisputeSide(booking.id)
+                                  }}
+                                  loading={actionLoading === booking.id}
+                                >
+                                  Submit your statement
+                                </Button>
+                              </div>
+                            )}
+                          {isProvider &&
+                            !booking.payments[0].dispute_provider_statement &&
+                            booking.payments[0].dispute_customer_statement && (
+                              <div className="space-y-2">
+                                <Textarea
+                                  label="Your side of the story (provider)"
+                                  value={disputeResponseText[booking.id] ?? ''}
+                                  onChange={(e) =>
+                                    setDisputeResponseText((prev) => ({
+                                      ...prev,
+                                      [booking.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Explain what happened from your perspective…"
+                                  rows={4}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    void submitDisputeSide(booking.id)
+                                  }}
+                                  loading={actionLoading === booking.id}
+                                >
+                                  Submit your statement
+                                </Button>
+                              </div>
+                            )}
+                        </div>
                       )}
                       {hasPayment(booking) && booking.payments?.[0]?.status === 'refunded' && (
                         <Badge variant="warning">Payment Refunded to Customer</Badge>
@@ -883,6 +1038,51 @@ export function MyBookings() {
           })}
         </div>
       )}
+
+      {/* Raise dispute — requires explanation for admin review */}
+      <Modal
+        isOpen={!!disputeModal}
+        onClose={() => {
+          setDisputeModal(null)
+          setDisputeReason('')
+        }}
+        title="Raise a payment dispute"
+        size="md"
+      >
+        {disputeModal && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Describe what went wrong. An admin will review your story and the other party&apos;s before
+              releasing or refunding escrow. Be factual and specific.
+            </p>
+            <Textarea
+              label="What happened? (at least 20 characters)"
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              rows={5}
+              placeholder="Include dates, what was agreed, and what went wrong…"
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDisputeModal(null)
+                  setDisputeReason('')
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => void submitDispute()}
+                loading={actionLoading === disputeModal.id}
+              >
+                Submit dispute
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Edit Booking Modal — for customers with pending bookings */}
       <Modal

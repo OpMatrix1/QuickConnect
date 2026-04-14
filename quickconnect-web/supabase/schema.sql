@@ -163,6 +163,10 @@ CREATE TABLE public.payments (
   transaction_ref TEXT,
   customer_confirmed BOOLEAN DEFAULT FALSE,
   provider_confirmed BOOLEAN DEFAULT FALSE,
+  dispute_customer_statement TEXT,
+  dispute_provider_statement TEXT,
+  dispute_initiated_by TEXT CHECK (dispute_initiated_by IS NULL OR dispute_initiated_by IN ('customer', 'provider')),
+  dispute_opened_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
