@@ -155,7 +155,10 @@ export function CreatePost() {
               type: 'new_post',
               title: 'New job in your category',
               body: `A new post "${title.trim()}" was created in ${categoryName}. Check it out!`,
-              data: { post_id: newPostId },
+              data: {
+                post_id: newPostId,
+                path: ROUTES.POST_DETAIL.replace(':id', newPostId),
+              },
             })
           }
         }

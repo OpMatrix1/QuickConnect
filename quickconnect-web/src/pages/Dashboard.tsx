@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Link, Navigate, useLocation } from 'react-router-dom'
 import { Reveal } from '@/components/ui/Reveal'
 import {
   FileText,
@@ -59,6 +59,7 @@ type BookingWithProvider = Booking & {
 
 export function Dashboard() {
   const { user, profile, loading: authLoading } = useAuth()
+  const location = useLocation()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -253,6 +254,17 @@ export function Dashboard() {
     const total = completedList.reduce((sum, b) => sum + (b.agreed_price || 0), 0)
     setEarnings(total)
   }, [])
+
+  useEffect(() => {
+    if (location.hash !== '#dashboard-category-requests') return
+    const t = window.setTimeout(() => {
+      document.getElementById('dashboard-category-requests')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 200)
+    return () => window.clearTimeout(t)
+  }, [location.pathname, location.hash])
 
   useEffect(() => {
     if (!user || !profile) {
@@ -998,7 +1010,7 @@ export function Dashboard() {
       </section>
 
       {/* Request New Category */}
-      <section>
+      <section id="dashboard-category-requests" className="scroll-mt-24">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Category Requests</h2>
           <Button

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import {
   CalendarCheck,
   DollarSign,
@@ -52,6 +52,8 @@ interface DisputedPayment {
 
 export function AdminReports() {
   const { user, profile, loading: authLoading } = useAuth()
+  const [searchParams] = useSearchParams()
+  const highlightPaymentId = searchParams.get('payment')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -142,12 +144,26 @@ export function AdminReports() {
     setDisputedPayments((data ?? []) as unknown as DisputedPayment[])
   }
 
+  useEffect(() => {
+    if (!highlightPaymentId || disputedPayments.length === 0) return
+    const hasRow = disputedPayments.some((p) => p.id === highlightPaymentId)
+    if (!hasRow) return
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`admin-dispute-${highlightPaymentId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [highlightPaymentId, disputedPayments])
+
   const handleDisputeAction = async (paymentId: string, action: 'refund' | 'release') => {
     setDisputeActionLoading(paymentId + action)
     setDisputeError(null)
     try {
       const fn = action === 'refund' ? 'admin_refund_payment' : 'admin_release_payment'
-      const { error } = await supabase.rpc(fn, { p_payment_id: paymentId })
+      const { error } = await supabase.rpc(fn, {
+        p_payment_id: paymentId,
+      } as never)
       if (error) throw error
       await fetchDisputedPayments()
     } catch (err) {
@@ -653,8 +669,8 @@ export function AdminReports() {
         )}
       </section>
 
-      {/* Disputed & Held Payments */}
-      <section>
+      {/* Disputed & Held Payments — deep-link: /admin/reports?payment=<payment_id> */}
+      <section id="admin-disputes">
         <h2 className="mb-4 text-lg font-semibold text-gray-900 flex items-center gap-2">
           <AlertTriangle className="size-5 text-warning-500" />
           Payments Requiring Attention
@@ -685,7 +701,15 @@ export function AdminReports() {
                   (p.bookings?.service_providers?.profiles as { full_name: string } | null)
                     ?.full_name ?? 'Provider'
                 return (
-                  <li key={p.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <li
+                    key={p.id}
+                    id={`admin-dispute-${p.id}`}
+                    className={`flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between scroll-mt-24 ${
+                      highlightPaymentId === p.id
+                        ? 'bg-primary-50/60 ring-2 ring-inset ring-primary-200'
+                        : ''
+                    }`}
+                  >
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <Badge variant={p.status === 'disputed' ? 'danger' : 'warning'}>

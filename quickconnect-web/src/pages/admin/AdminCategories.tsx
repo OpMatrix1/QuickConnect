@@ -242,7 +242,10 @@ export function AdminCategories() {
           action === 'approve'
             ? `Your requested category "${reviewModal.name}" has been approved and you've been automatically listed under it.`
             : `Your category request "${reviewModal.name}" was declined.${feedbackText.trim() ? ` Feedback: ${feedbackText.trim()}` : ''}`,
-        data: { category_request_id: reviewModal.id },
+        data: {
+          category_request_id: reviewModal.id,
+          path: `${ROUTES.DASHBOARD}#dashboard-category-requests`,
+        },
       } as any)
 
       setReviewModal(null)

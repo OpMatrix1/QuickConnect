@@ -922,7 +922,11 @@ export function Profile() {
                     type: 'service_linked',
                     title: 'Now listed in a new category',
                     body: `You're now listed under "${cat.name}". Customers in that category will be able to find you.`,
-                    data: { service_id: service.id, category_id: cat.id },
+                    data: {
+                      service_id: service.id,
+                      category_id: cat.id,
+                      path: `${ROUTES.PROFILE}?section=business`,
+                    },
                   } as never)
                 }
               }

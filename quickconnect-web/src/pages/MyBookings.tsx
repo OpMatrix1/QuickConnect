@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import {
   Calendar,
   MapPin,
@@ -126,6 +126,8 @@ async function mergePaymentsIntoBookings(
 
 export function MyBookings() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const highlightBookingId = searchParams.get('booking')
   const { user, profile, loading: authLoading } = useAuth()
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [bookings, setBookings] = useState<BookingWithDetails[]>([])
@@ -230,6 +232,19 @@ export function MyBookings() {
   useEffect(() => {
     fetchBookings()
   }, [fetchBookings])
+
+  useEffect(() => {
+    if (!highlightBookingId || loading) return
+    const found = bookings.some((b) => b.id === highlightBookingId)
+    if (!found) return
+    setExpandedId(highlightBookingId)
+    const t = window.setTimeout(() => {
+      document
+        .getElementById(`booking-card-${highlightBookingId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [highlightBookingId, bookings, loading])
 
   useEffect(() => {
     if (!user?.id) return
@@ -564,7 +579,12 @@ export function MyBookings() {
             const otherAvatar = getOtherPartyAvatar(booking, isProvider)
 
             return (
-              <Card key={booking.id} padding="none">
+              <div
+                key={booking.id}
+                id={`booking-card-${booking.id}`}
+                className="scroll-mt-24"
+              >
+              <Card padding="none">
                 <div
                   className="flex cursor-pointer flex-wrap items-center justify-between gap-4 p-5"
                   onClick={() =>
@@ -858,6 +878,7 @@ export function MyBookings() {
                   </div>
                 )}
               </Card>
+              </div>
             )
           })}
         </div>

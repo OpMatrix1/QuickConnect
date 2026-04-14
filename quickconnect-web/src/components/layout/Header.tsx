@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { cn, getInitials, formatRelativeTime } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
+import { getNotificationNavTarget } from '@/lib/notificationRoutes'
 import { useAuth } from '@/context/AuthContext'
 import { useNotifications } from '@/context/NotificationContext'
 import {
@@ -27,7 +28,7 @@ export function Header() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { user, profile, signOut } = useAuth()
-  const { notifications, unreadCount, markAllAsRead } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -175,28 +176,62 @@ export function Header() {
                       {notifications.length === 0 ? (
                         <p className="px-4 py-8 text-center text-sm text-gray-400">No notifications yet</p>
                       ) : (
-                        notifications.slice(0, 15).map((n) => (
-                          <div
-                            key={n.id}
-                            className={cn(
-                              'px-4 py-3 border-b border-gray-50 last:border-0 transition-colors',
-                              !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
-                            )}
-                          >
-                            <div className="flex items-start gap-2">
-                              {!n.is_read && (
-                                <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
+                        notifications.slice(0, 15).map((n) => {
+                          const navTarget = getNotificationNavTarget(n, {
+                            role: profile?.role ?? null,
+                          })
+                          const isClickable = Boolean(navTarget)
+                          return (
+                            <div
+                              key={n.id}
+                              className={cn(
+                                'border-b border-gray-50 last:border-0 transition-colors',
+                                !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
                               )}
-                              <div className={!n.is_read ? '' : 'pl-4'}>
-                                <p className="text-sm font-medium text-gray-900 leading-snug">{n.title}</p>
-                                {n.body && (
-                                  <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">{n.body}</p>
+                            >
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await markAsRead(n.id)
+                                  setNotifOpen(false)
+                                  if (navTarget) navigate(navTarget)
+                                }}
+                                className={cn(
+                                  'w-full px-4 py-3 text-left',
+                                  isClickable ? 'cursor-pointer' : 'cursor-default'
                                 )}
-                                <p className="mt-1 text-[11px] text-gray-400">{formatRelativeTime(n.created_at)}</p>
-                              </div>
+                              >
+                                <div className="flex items-start gap-2">
+                                  {!n.is_read && (
+                                    <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
+                                  )}
+                                  <div className={!n.is_read ? '' : 'pl-4'}>
+                                    <p className="text-sm font-medium text-gray-900 leading-snug">
+                                      {n.title}
+                                    </p>
+                                    {n.body && (
+                                      <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">
+                                        {n.body}
+                                      </p>
+                                    )}
+                                    <p className="mt-1 text-[11px] text-gray-400">
+                                      {formatRelativeTime(n.created_at)}
+                                    </p>
+                                    {isClickable ? (
+                                      <p className="mt-1 text-[11px] font-medium text-primary-600">
+                                        Tap to open
+                                      </p>
+                                    ) : (
+                                      <p className="mt-1 text-[11px] text-gray-400">
+                                        Tap to dismiss
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </button>
                             </div>
-                          </div>
-                        ))
+                          )
+                        })
                       )}
                     </div>
                     {user && isWebPushSupported() && (

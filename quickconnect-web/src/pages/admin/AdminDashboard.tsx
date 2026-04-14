@@ -11,6 +11,7 @@ import {
   UserPlus,
   ClipboardList,
   FolderOpen,
+  AlertTriangle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -31,6 +32,16 @@ interface ActivityItem {
   createdAt: string
 }
 
+interface DisputedPreviewPayment {
+  id: string
+  amount: number
+  created_at: string
+  bookings: {
+    profiles: { full_name: string } | null
+    service_providers: { profiles: { full_name: string } | null } | null
+  } | null
+}
+
 export function AdminDashboard() {
   const { user, profile, loading: authLoading } = useAuth()
   const [loading, setLoading] = useState(true)
@@ -43,6 +54,10 @@ export function AdminDashboard() {
   const [activePosts, setActivePosts] = useState(0)
   const [pendingCategoryRequests, setPendingCategoryRequests] = useState(0)
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([])
+  const [disputedPaymentCount, setDisputedPaymentCount] = useState(0)
+  const [disputedPaymentsPreview, setDisputedPaymentsPreview] = useState<
+    DisputedPreviewPayment[]
+  >([])
 
   useEffect(() => {
     if (!user || !profile) {
@@ -69,6 +84,8 @@ export function AdminDashboard() {
           recentUsersRes,
           recentBookingsRes,
           recentPostsRes,
+          disputedCountRes,
+          disputedPreviewRes,
         ] = await Promise.all([
           supabase.from('profiles').select('*', { count: 'exact', head: true }),
           supabase
@@ -102,6 +119,28 @@ export function AdminDashboard() {
             .select('id, title, created_at')
             .order('created_at', { ascending: false })
             .limit(5),
+          supabase
+            .from('payments')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'disputed'),
+          supabase
+            .from('payments')
+            .select(
+              `
+              id,
+              amount,
+              created_at,
+              bookings(
+                profiles!bookings_customer_id_fkey(full_name),
+                service_providers!bookings_provider_id_fkey(
+                  profiles!service_providers_profile_id_fkey(full_name)
+                )
+              )
+            `
+            )
+            .eq('status', 'disputed')
+            .order('created_at', { ascending: false })
+            .limit(5),
         ])
 
         setTotalUsers(usersRes.count ?? 0)
@@ -109,6 +148,10 @@ export function AdminDashboard() {
         setTotalBookings(bookingsRes.count ?? 0)
         setActivePosts(postsRes.count ?? 0)
         setPendingCategoryRequests(catReqRes.count ?? 0)
+        setDisputedPaymentCount(disputedCountRes.count ?? 0)
+        setDisputedPaymentsPreview(
+          (disputedPreviewRes.data ?? []) as DisputedPreviewPayment[]
+        )
 
         const payments = (paymentsRes.data || []) as { amount: number }[]
         setTotalRevenue(payments.reduce((sum, p) => sum + p.amount, 0))
@@ -303,7 +346,7 @@ export function AdminDashboard() {
                 </span>
                 <div>
                   <p className="font-medium text-gray-900">View Reports</p>
-                  <p className="text-sm text-gray-500">Analytics and insights</p>
+                  <p className="text-sm text-gray-500">Analytics, disputes &amp; refunds</p>
                 </div>
                 <ArrowRight className="ml-auto size-5 text-gray-400" />
               </CardContent>
@@ -333,6 +376,86 @@ export function AdminDashboard() {
             </Card>
           </Link>
         </div>
+      </section>
+
+      {/* Disputed payments — resolve in Reports */}
+      <section>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Payment disputes
+          </h2>
+          <Link
+            to={
+              disputedPaymentsPreview[0]?.id
+                ? `${ROUTES.ADMIN_REPORTS}?payment=${disputedPaymentsPreview[0].id}`
+                : ROUTES.ADMIN_REPORTS
+            }
+            className="text-sm font-medium text-primary-600 hover:text-primary-700"
+          >
+            Open reports →
+          </Link>
+        </div>
+        {disputedPaymentCount === 0 ? (
+          <Card padding="md">
+            <CardContent className="flex items-center gap-3 text-sm text-gray-600">
+              <span className="flex size-10 items-center justify-center rounded-lg bg-success-100 text-success-600">
+                <CalendarCheck className="size-5" />
+              </span>
+              No disputed payments. Refunds and releases are handled under Admin → Reports when needed.
+            </CardContent>
+          </Card>
+        ) : (
+          <Card padding="none">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-warning-50/80 px-5 py-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="size-5 text-warning-600" />
+                <span className="font-semibold text-gray-900">
+                  {disputedPaymentCount} open dispute{disputedPaymentCount === 1 ? '' : 's'}
+                </span>
+              </div>
+              <Link
+                to={
+                  disputedPaymentsPreview[0]?.id
+                    ? `${ROUTES.ADMIN_REPORTS}?payment=${disputedPaymentsPreview[0].id}`
+                    : ROUTES.ADMIN_REPORTS
+                }
+              >
+                <span className="text-sm font-medium text-primary-600 hover:text-primary-700">
+                  Resolve in Reports
+                </span>
+              </Link>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {disputedPaymentsPreview.map((p) => {
+                const customerName =
+                  p.bookings?.profiles?.full_name ?? 'Customer'
+                const providerName =
+                  p.bookings?.service_providers?.profiles?.full_name ??
+                  'Provider'
+                return (
+                  <li key={p.id}>
+                    <Link
+                      to={`${ROUTES.ADMIN_REPORTS}?payment=${p.id}`}
+                      className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-gray-50/80"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-medium text-gray-900">
+                          {formatCurrency(p.amount)}
+                        </p>
+                        <p className="truncate text-sm text-gray-500">
+                          {customerName} → {providerName}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs text-gray-400">
+                        {formatRelativeTime(p.created_at)}
+                      </span>
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+        )}
       </section>
 
       {/* Recent activity */}
