@@ -300,6 +300,69 @@ export type Database = {
           }
         ]
       }
+      looking_for_post_reports: {
+        Row: {
+          id: string
+          reporter_id: string
+          post_id: string
+          reason: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'other'
+          description: string | null
+          status: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes: string | null
+          reviewed_by: string | null
+          reviewed_at: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          reporter_id: string
+          post_id: string
+          reason: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'other'
+          description?: string | null
+          status?: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          reporter_id?: string
+          post_id?: string
+          reason?: 'spam' | 'harassment' | 'fraud' | 'inappropriate_content' | 'other'
+          description?: string | null
+          status?: 'pending' | 'reviewed' | 'resolved' | 'dismissed'
+          admin_notes?: string | null
+          reviewed_by?: string | null
+          reviewed_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "looking_for_post_reports_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "looking_for_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "looking_for_post_reports_reporter_id_fkey"
+            columns: ["reporter_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "looking_for_post_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       looking_for_responses: {
         Row: {
           id: string

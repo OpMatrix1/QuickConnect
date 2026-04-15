@@ -17,6 +17,7 @@ import { AdminUsers } from '@/pages/admin/AdminUsers'
 import { AdminReports } from '@/pages/admin/AdminReports'
 import { LookingFor } from '@/pages/LookingFor'
 import { CreatePost } from '@/pages/CreatePost'
+import { EditPost } from '@/pages/EditPost'
 import { PostDetail } from '@/pages/PostDetail'
 import { ProviderSearch } from '@/pages/ProviderSearch'
 import { ProviderProfile } from '@/pages/ProviderProfile'
@@ -53,6 +54,7 @@ function App() {
               <Route path={ROUTES.RESET_PASSWORD} element={<ResetPassword />} />
               <Route path={ROUTES.LOOKING_FOR} element={<LookingFor />} />
               <Route path={ROUTES.CREATE_POST} element={<CreatePost />} />
+              <Route path={ROUTES.EDIT_POST} element={<EditPost />} />
               <Route path={ROUTES.POST_DETAIL} element={<PostDetail />} />
               <Route path={ROUTES.PROVIDERS} element={<ProviderSearch />} />
               <Route path={ROUTES.PROVIDER_PROFILE} element={<ProviderProfile />} />

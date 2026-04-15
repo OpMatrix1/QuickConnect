@@ -8,6 +8,9 @@ import {
   Check,
   X,
   Send,
+  AlertTriangle,
+  Edit2,
+  Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -37,6 +40,8 @@ import {
   Textarea,
   Spinner,
   EmptyState,
+  Modal,
+  Select,
 } from '@/components/ui'
 
 type ResponseWithProviderData = LookingForResponse & {
@@ -64,9 +69,17 @@ export function PostDetail() {
 
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [reportModalOpen, setReportModalOpen] = useState(false)
+  const [reportReason, setReportReason] = useState('other')
+  const [reportDescription, setReportDescription] = useState('')
+  const [reportSubmitting, setReportSubmitting] = useState(false)
+  const [reportError, setReportError] = useState<string | null>(null)
 
   const isOwner = user && post && post.customer_id === user.id
   const isProvider = profile?.role === 'provider'
+  const isAdmin = profile?.role === 'admin'
   const canSubmitQuote = isProvider && !isOwner && post?.status === 'active'
 
   useEffect(() => {
@@ -298,6 +311,54 @@ export function PostDetail() {
     }
   }
 
+  async function handleDeletePost() {
+    if (!user || !post || (!isOwner && !isAdmin)) return
+    setDeleting(true)
+    try {
+      const { error: deleteError } = await supabase
+        .from('looking_for_posts')
+        .delete()
+        .eq('id', post.id)
+
+      if (deleteError) throw deleteError
+      setDeleteModalOpen(false)
+      navigate(ROUTES.LOOKING_FOR)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete post')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  async function handleSubmitReport() {
+    if (!user || !post || isOwner) return
+    if (reportDescription.trim().length < 8) {
+      setReportError('Please add at least 8 characters so admins can evaluate clearly.')
+      return
+    }
+
+    setReportSubmitting(true)
+    setReportError(null)
+    try {
+      const { error: reportInsertError } = await supabase
+        .from('looking_for_post_reports')
+        .insert({
+          reporter_id: user.id,
+          post_id: post.id,
+          reason: reportReason,
+          description: reportDescription.trim(),
+        } as never)
+      if (reportInsertError) throw reportInsertError
+      setReportModalOpen(false)
+      setReportDescription('')
+      setReportReason('other')
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : 'Failed to submit report')
+    } finally {
+      setReportSubmitting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -356,6 +417,38 @@ export function PostDetail() {
         <Link to={ROUTES.LOOKING_FOR}>
           <Button variant="outline">Back to Posts</Button>
         </Link>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {isOwner && post.status === 'active' && (
+          <Link to={ROUTES.EDIT_POST.replace(':id', post.id)}>
+            <Button size="sm" variant="outline" icon={<Edit2 className="size-4" />}>
+              Edit Post
+            </Button>
+          </Link>
+        )}
+        {(isOwner || isAdmin) && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-danger-600 border-danger-300 hover:bg-danger-50"
+            icon={<Trash2 className="size-4" />}
+            onClick={() => setDeleteModalOpen(true)}
+          >
+            Delete Post
+          </Button>
+        )}
+        {!isOwner && user && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="text-warning-700 hover:bg-warning-50"
+            icon={<AlertTriangle className="size-4" />}
+            onClick={() => setReportModalOpen(true)}
+          >
+            Report Post
+          </Button>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -614,6 +707,77 @@ export function PostDetail() {
           </p>
         </section>
       )}
+
+      <Modal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete post"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            This permanently removes the post and its related responses. Continue?
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={deleting}
+              onClick={() => void handleDeletePost()}
+            >
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        title="Report this post"
+        size="md"
+      >
+        <div className="space-y-4">
+          {reportError && (
+            <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">
+              {reportError}
+            </p>
+          )}
+          <Select
+            label="Reason"
+            value={reportReason}
+            onChange={(e) => setReportReason(e.target.value)}
+            options={[
+              { value: 'spam', label: 'Spam' },
+              { value: 'harassment', label: 'Harassment' },
+              { value: 'fraud', label: 'Fraud' },
+              { value: 'inappropriate_content', label: 'Inappropriate content' },
+              { value: 'other', label: 'Other' },
+            ]}
+          />
+          <Textarea
+            label="Details"
+            value={reportDescription}
+            onChange={(e) => setReportDescription(e.target.value)}
+            rows={4}
+            placeholder="Explain what is wrong with this post..."
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setReportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={reportSubmitting}
+              onClick={() => void handleSubmitReport()}
+            >
+              Submit report
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

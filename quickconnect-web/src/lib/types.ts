@@ -16,6 +16,8 @@ export type ServiceArea = Database['public']['Tables']['service_areas']['Row']
 
 export type LookingForPost = Database['public']['Tables']['looking_for_posts']['Row']
 export type LookingForPostInsert = Database['public']['Tables']['looking_for_posts']['Insert']
+export type LookingForPostReport = Database['public']['Tables']['looking_for_post_reports']['Row']
+export type LookingForPostReportInsert = Database['public']['Tables']['looking_for_post_reports']['Insert']
 
 export type LookingForResponse = Database['public']['Tables']['looking_for_responses']['Row']
 export type LookingForResponseInsert = Database['public']['Tables']['looking_for_responses']['Insert']

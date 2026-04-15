@@ -11,6 +11,7 @@ export const ROUTES = {
   RESET_PASSWORD: '/reset-password',
   LOOKING_FOR: '/looking-for',
   CREATE_POST: '/looking-for/create',
+  EDIT_POST: '/looking-for/:id/edit',
   POST_DETAIL: '/looking-for/:id',
   PROVIDERS: '/providers',
   PROVIDER_PROFILE: '/providers/:id',

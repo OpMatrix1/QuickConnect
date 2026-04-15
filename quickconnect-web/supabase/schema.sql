@@ -113,6 +113,22 @@ CREATE TABLE public.looking_for_responses (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- looking_for_post_reports (content moderation for Looking For posts)
+CREATE TABLE public.looking_for_post_reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reporter_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  post_id UUID NOT NULL REFERENCES public.looking_for_posts(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL CHECK (reason IN ('spam', 'harassment', 'fraud', 'inappropriate_content', 'other')),
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'reviewed', 'resolved', 'dismissed')),
+  admin_notes TEXT,
+  reviewed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  reviewed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT looking_for_post_reports_unique UNIQUE (reporter_id, post_id)
+);
+
 -- bookings
 CREATE TABLE public.bookings (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -248,6 +264,9 @@ CREATE INDEX idx_looking_for_posts_category_id ON public.looking_for_posts(categ
 CREATE INDEX idx_looking_for_posts_status ON public.looking_for_posts(status);
 CREATE INDEX idx_looking_for_posts_location ON public.looking_for_posts USING GIST(location);
 CREATE INDEX idx_looking_for_posts_created_at ON public.looking_for_posts(created_at DESC);
+CREATE INDEX idx_looking_for_post_reports_post_id ON public.looking_for_post_reports(post_id);
+CREATE INDEX idx_looking_for_post_reports_status ON public.looking_for_post_reports(status);
+CREATE INDEX idx_looking_for_post_reports_created_at ON public.looking_for_post_reports(created_at DESC);
 
 -- looking_for_responses
 CREATE INDEX idx_looking_for_responses_post_id ON public.looking_for_responses(post_id);
@@ -382,6 +401,10 @@ CREATE TRIGGER set_services_updated_at
 
 CREATE TRIGGER set_looking_for_posts_updated_at
   BEFORE UPDATE ON public.looking_for_posts
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+CREATE TRIGGER set_looking_for_post_reports_updated_at
+  BEFORE UPDATE ON public.looking_for_post_reports
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 CREATE TRIGGER set_bookings_updated_at
@@ -541,6 +564,7 @@ ALTER TABLE public.service_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.service_areas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.looking_for_posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.looking_for_post_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.looking_for_responses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
@@ -634,6 +658,44 @@ CREATE POLICY "looking_for_posts_insert_customer" ON public.looking_for_posts
 
 CREATE POLICY "looking_for_posts_update_customer" ON public.looking_for_posts
   FOR UPDATE USING (auth.uid() = customer_id);
+
+CREATE POLICY "looking_for_posts_delete_customer" ON public.looking_for_posts
+  FOR DELETE USING (auth.uid() = customer_id);
+
+CREATE POLICY "looking_for_posts_select_admin" ON public.looking_for_posts
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "looking_for_posts_delete_admin" ON public.looking_for_posts
+  FOR DELETE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+-- looking_for_post_reports: reporter can INSERT/SELECT own; admin can review/update all
+CREATE POLICY "looking_for_post_reports_insert_reporter" ON public.looking_for_post_reports
+  FOR INSERT WITH CHECK (
+    reporter_id = auth.uid()
+    AND EXISTS (
+      SELECT 1
+      FROM public.looking_for_posts p
+      WHERE p.id = post_id
+      AND p.customer_id <> auth.uid()
+    )
+  );
+
+CREATE POLICY "looking_for_post_reports_select_reporter" ON public.looking_for_post_reports
+  FOR SELECT USING (reporter_id = auth.uid());
+
+CREATE POLICY "looking_for_post_reports_select_admin" ON public.looking_for_post_reports
+  FOR SELECT USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
+
+CREATE POLICY "looking_for_post_reports_update_admin" ON public.looking_for_post_reports
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'admin')
+  );
 
 -- looking_for_responses: viewable by post owner and response owner, provider can INSERT
 CREATE POLICY "looking_for_responses_select_post_or_response_owner" ON public.looking_for_responses

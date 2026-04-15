@@ -11,6 +11,7 @@ import {
   Check,
   RotateCcw,
   Flag,
+  Trash2,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -56,6 +57,18 @@ interface DisputedPayment {
       profiles: { full_name: string } | null
     } | null
   } | null
+}
+
+interface PostReport {
+  id: string
+  reporter_id: string
+  post_id: string
+  reason: string
+  description: string | null
+  status: string
+  created_at: string
+  reporter: { full_name: string } | null
+  post: { id: string; title: string; status: string; customer_id: string } | null
 }
 
 export function AdminReports() {
@@ -108,6 +121,7 @@ export function AdminReports() {
     reported: { full_name: string } | null
   }
   const [userReports, setUserReports] = useState<UserReport[]>([])
+  const [postReports, setPostReports] = useState<PostReport[]>([])
   const [reportActionLoading, setReportActionLoading] = useState<string | null>(null)
 
   const fetchUserReports = async () => {
@@ -122,6 +136,18 @@ export function AdminReports() {
     setUserReports((data ?? []) as unknown as UserReport[])
   }
 
+  const fetchPostReports = async () => {
+    const { data } = await supabase
+      .from('looking_for_post_reports')
+      .select(`
+        id, reporter_id, post_id, reason, description, status, created_at,
+        reporter:profiles!looking_for_post_reports_reporter_id_fkey(full_name),
+        post:looking_for_posts!looking_for_post_reports_post_id_fkey(id, title, status, customer_id)
+      `)
+      .order('created_at', { ascending: false })
+    setPostReports((data ?? []) as unknown as PostReport[])
+  }
+
   const handleReportAction = async (reportId: string, newStatus: string) => {
     setReportActionLoading(reportId + newStatus)
     try {
@@ -131,6 +157,49 @@ export function AdminReports() {
         .eq('id' as any, reportId as any)
       if (error) throw error
       await fetchUserReports()
+    } finally {
+      setReportActionLoading(null)
+    }
+  }
+
+  const handlePostReportAction = async (reportId: string, newStatus: string) => {
+    setReportActionLoading(reportId + newStatus)
+    try {
+      const { error } = await supabase
+        .from('looking_for_post_reports')
+        .update({
+          status: newStatus,
+          reviewed_by: user?.id ?? null,
+          reviewed_at: new Date().toISOString(),
+        } as any)
+        .eq('id' as any, reportId as any)
+      if (error) throw error
+      await fetchPostReports()
+    } finally {
+      setReportActionLoading(null)
+    }
+  }
+
+  const handleDeleteReportedPost = async (reportId: string, postId: string) => {
+    setReportActionLoading(reportId + 'deletePost')
+    try {
+      const { error: deleteError } = await supabase
+        .from('looking_for_posts')
+        .delete()
+        .eq('id', postId)
+      if (deleteError) throw deleteError
+
+      await supabase
+        .from('looking_for_post_reports')
+        .update({
+          status: 'resolved',
+          reviewed_by: user?.id ?? null,
+          reviewed_at: new Date().toISOString(),
+          admin_notes: 'Post removed by admin',
+        } as any)
+        .eq('id' as any, reportId as any)
+
+      await fetchPostReports()
     } finally {
       setReportActionLoading(null)
     }
@@ -407,6 +476,7 @@ export function AdminReports() {
     fetchData()
     fetchDisputedPayments()
     fetchUserReports()
+    fetchPostReports()
   }, [user?.id, profile?.role, dateFrom, dateTo])
 
   if (authLoading) {
@@ -723,6 +793,105 @@ export function AdminReports() {
                         >
                           Mark Resolved
                         </Button>
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </Card>
+        )}
+      </section>
+
+      {/* Looking For Post Reports */}
+      <section>
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <Flag className="size-5 text-warning-600" />
+          Looking For Post Reports
+        </h2>
+        <p className="mb-4 text-sm text-gray-500">
+          Community-reported posts. Review the reason, evaluate context, and either dismiss, resolve, or remove the post.
+        </p>
+
+        {postReports.length === 0 ? (
+          <EmptyState
+            icon={<Check className="size-10 text-success-500" />}
+            title="No post reports"
+            description="No Looking For posts have been reported."
+          />
+        ) : (
+          <Card padding="none">
+            <ul className="divide-y divide-gray-100">
+              {postReports.map((r) => {
+                const reporterName = (r.reporter as { full_name: string } | null)?.full_name ?? 'Unknown'
+                const postTitle = r.post?.title ?? 'Deleted post'
+                const postStatus = r.post?.status ?? 'deleted'
+                return (
+                  <li key={r.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={
+                            r.status === 'pending'
+                              ? 'warning'
+                              : r.status === 'resolved'
+                                ? 'success'
+                                : r.status === 'dismissed'
+                                  ? 'default'
+                                  : 'info'
+                          }
+                        >
+                          {r.status.charAt(0).toUpperCase() + r.status.slice(1)}
+                        </Badge>
+                        <span className="text-sm font-medium capitalize text-gray-700">
+                          {r.reason.replace(/_/g, ' ')}
+                        </span>
+                        <Badge variant={postStatus === 'active' ? 'success' : 'default'}>
+                          Post: {postStatus}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        <strong>{reporterName}</strong> reported post <strong>{postTitle}</strong>
+                      </p>
+                      {r.description && (
+                        <p className="mt-1 line-clamp-3 text-sm text-gray-500">{r.description}</p>
+                      )}
+                      {r.post?.id && (
+                        <p className="mt-1 text-xs text-primary-600">
+                          Post ID: {r.post.id}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-400">{formatDate(r.created_at)}</p>
+                    </div>
+                    {r.status === 'pending' && (
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={reportActionLoading === r.id + 'dismissed'}
+                          onClick={() => void handlePostReportAction(r.id, 'dismissed')}
+                        >
+                          Dismiss
+                        </Button>
+                        <Button
+                          size="sm"
+                          loading={reportActionLoading === r.id + 'resolved'}
+                          onClick={() => void handlePostReportAction(r.id, 'resolved')}
+                        >
+                          Mark Resolved
+                        </Button>
+                        {r.post?.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            icon={<Trash2 className="size-4" />}
+                            className="border-danger-300 text-danger-600 hover:bg-danger-50"
+                            loading={reportActionLoading === r.id + 'deletePost'}
+                            onClick={() => void handleDeleteReportedPost(r.id, r.post!.id)}
+                          >
+                            Delete Post
+                          </Button>
+                        )}
                       </div>
                     )}
                   </li>
