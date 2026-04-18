@@ -334,7 +334,7 @@ export function AdminReports() {
             supabase
               .from('payments')
               .select('amount, method')
-              .eq('status', 'completed')
+              .eq('status', 'released')
               .gte('created_at', fromDate)
               .lte('created_at', toDate),
             supabase

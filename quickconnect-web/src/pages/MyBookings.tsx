@@ -55,6 +55,10 @@ interface BookingWithDetails extends Booking {
     status: PaymentStatus
     customer_confirmed: boolean
     provider_confirmed: boolean
+    settlement_proposed_amount?: number | null
+    settlement_proposed_by?: 'customer' | 'provider' | null
+    settlement_customer_agreed?: boolean
+    settlement_provider_agreed?: boolean
     dispute_customer_statement?: string | null
     dispute_provider_statement?: string | null
     dispute_initiated_by?: 'customer' | 'provider' | null
@@ -103,7 +107,7 @@ async function mergePaymentsIntoBookings(
   const { data: payRows, error } = await supabase
     .from('payments')
     .select(
-      'id, booking_id, status, customer_confirmed, provider_confirmed, dispute_customer_statement, dispute_provider_statement, dispute_initiated_by, dispute_opened_at'
+      'id, booking_id, status, customer_confirmed, provider_confirmed, settlement_proposed_amount, settlement_proposed_by, settlement_customer_agreed, settlement_provider_agreed, dispute_customer_statement, dispute_provider_statement, dispute_initiated_by, dispute_opened_at'
     )
     .in('booking_id', ids)
 
@@ -117,6 +121,10 @@ async function mergePaymentsIntoBookings(
       status: PaymentStatus
       customer_confirmed: boolean
       provider_confirmed: boolean
+      settlement_proposed_amount: number | null
+      settlement_proposed_by: 'customer' | 'provider' | null
+      settlement_customer_agreed: boolean
+      settlement_provider_agreed: boolean
       dispute_customer_statement: string | null
       dispute_provider_statement: string | null
       dispute_initiated_by: 'customer' | 'provider' | null
@@ -127,6 +135,10 @@ async function mergePaymentsIntoBookings(
       status: p.status,
       customer_confirmed: p.customer_confirmed,
       provider_confirmed: p.provider_confirmed,
+      settlement_proposed_amount: p.settlement_proposed_amount,
+      settlement_proposed_by: p.settlement_proposed_by,
+      settlement_customer_agreed: p.settlement_customer_agreed,
+      settlement_provider_agreed: p.settlement_provider_agreed,
       dispute_customer_statement: p.dispute_customer_statement,
       dispute_provider_statement: p.dispute_provider_statement,
       dispute_initiated_by: p.dispute_initiated_by,
@@ -163,8 +175,22 @@ export function MyBookings() {
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [walletReserved, setWalletReserved] = useState<number | null>(null)
+  const [settlementDraft, setSettlementDraft] = useState<Record<string, string>>({})
   const [providerIdForRealtime, setProviderIdForRealtime] = useState<string | null>(null)
+  const [platformFeePercent, setPlatformFeePercent] = useState<number | null>(null)
   const isProvider = profile?.role === 'provider'
+
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('platform_fee_percent')
+        .eq('id', 1)
+        .maybeSingle()
+      if (data?.platform_fee_percent != null) setPlatformFeePercent(Number(data.platform_fee_percent))
+    })()
+  }, [])
 
   // Edit modal form state
   const [editDate, setEditDate] = useState('')
@@ -203,7 +229,7 @@ export function MyBookings() {
             profiles!bookings_customer_id_fkey(full_name, avatar_url),
             services(title),
             looking_for_responses(looking_for_posts(title)),
-            payments(id, status, customer_confirmed, provider_confirmed),
+            payments(id, status, customer_confirmed, provider_confirmed, settlement_proposed_amount, settlement_proposed_by, settlement_customer_agreed, settlement_provider_agreed),
             reviews(id)
           `
           )
@@ -228,7 +254,7 @@ export function MyBookings() {
             ),
             services(title),
             looking_for_responses(looking_for_posts(title)),
-            payments(id, status, customer_confirmed, provider_confirmed),
+            payments(id, status, customer_confirmed, provider_confirmed, settlement_proposed_amount, settlement_proposed_by, settlement_customer_agreed, settlement_provider_agreed),
             reviews(id)
           `
           )
@@ -302,21 +328,75 @@ export function MyBookings() {
       ? bookings
       : bookings.filter((b) => b.status === statusFilter)
 
-  const updateBookingStatus = async (
-    bookingId: string,
-    newStatus: Booking['status']
-  ) => {
+  const confirmReadyForWork = async (bookingId: string) => {
     setActionLoading(bookingId)
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .update({ status: newStatus } as any)
-        .eq('id' as any, bookingId as any)
+      const { error } = await supabase.rpc('booking_confirm_ready_for_work', {
+        p_booking_id: bookingId,
+      } as never)
+      if (error) throw error
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const cancelBookingFlow = async (bookingId: string) => {
+    setActionLoading(bookingId)
+    try {
+      const { error } = await supabase.rpc('booking_cancel_before_work_started', {
+        p_booking_id: bookingId,
+      } as never)
       if (error) throw error
       await fetchBookings()
       setExpandedId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update')
+      setError(err instanceof Error ? err.message : 'Failed to cancel')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const proposeSettlement = async (booking: BookingWithDetails) => {
+    const pay = booking.payments?.[0]
+    if (!pay) return
+    const raw = (settlementDraft[pay.id] ?? '').trim()
+    const amt = parseFloat(raw)
+    if (!raw || isNaN(amt) || amt <= 0) {
+      setError('Enter a valid settlement amount.')
+      return
+    }
+    setActionLoading(booking.id)
+    setError(null)
+    try {
+      const { error } = await supabase.rpc('payment_propose_settlement', {
+        p_payment_id: pay.id,
+        p_amount: amt,
+      } as never)
+      if (error) throw error
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to propose settlement')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const agreeToSettlement = async (booking: BookingWithDetails) => {
+    const pay = booking.payments?.[0]
+    if (!pay) return
+    setActionLoading(booking.id)
+    setError(null)
+    try {
+      const { error } = await supabase.rpc('payment_agree_to_settlement', {
+        p_payment_id: pay.id,
+      } as never)
+      if (error) throw error
+      await fetchBookings()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept settlement')
     } finally {
       setActionLoading(null)
     }
@@ -382,10 +462,12 @@ export function MyBookings() {
     if (!user) return
     const { data } = await supabase
       .from('wallets')
-      .select('balance')
+      .select('balance, reserved_balance')
       .eq('user_id' as any, user.id as any)
       .single()
-    setWalletBalance((data as { balance: number } | null)?.balance ?? null)
+    const w = data as { balance: number; reserved_balance?: number } | null
+    setWalletBalance(w?.balance ?? null)
+    setWalletReserved(w?.reserved_balance ?? null)
   }
 
   const openPaymentModal = async (booking: BookingWithDetails) => {
@@ -752,63 +834,46 @@ export function MyBookings() {
                     )}
 
                     <div className="flex flex-wrap gap-2">
-                      {/* Provider actions */}
-                      {isProvider && (
-                        <>
-                          {booking.status === 'pending' && (
-                            <>
+                      {/* Provider / customer: both must confirm ready before work is in progress */}
+                      {isProvider &&
+                        (booking.status === 'pending' || booking.status === 'confirmed') &&
+                        !booking.provider_ready_in_progress && (
+                          <Button
+                            size="sm"
+                            icon={<Play className="size-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void confirmReadyForWork(booking.id)
+                            }}
+                            loading={actionLoading === booking.id}
+                          >
+                            Confirm ready to start
+                          </Button>
+                        )}
+                      {!isProvider &&
+                        (booking.status === 'pending' || booking.status === 'confirmed') && (
+                          <>
+                            {!booking.customer_ready_in_progress && (
                               <Button
                                 size="sm"
-                                icon={<Check className="size-4" />}
+                                icon={<Play className="size-4" />}
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  updateBookingStatus(booking.id, 'confirmed')
+                                  void confirmReadyForWork(booking.id)
                                 }}
                                 loading={actionLoading === booking.id}
                               >
-                                Confirm
+                                Confirm ready to start
                               </Button>
-                              <Button
-                                size="sm"
-                                variant="danger"
-                                icon={<X className="size-4" />}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  updateBookingStatus(booking.id, 'cancelled')
-                                }}
-                                loading={actionLoading === booking.id}
-                              >
-                                Decline
-                              </Button>
-                            </>
-                          )}
-                          {booking.status === 'confirmed' && (
-                            <Button
-                              size="sm"
-                              icon={<Play className="size-4" />}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                updateBookingStatus(booking.id, 'in_progress')
-                              }}
-                              loading={actionLoading === booking.id}
-                            >
-                              Mark In Progress
-                            </Button>
-                          )}
-                          {booking.status === 'in_progress' && (
-                            <Button
-                              size="sm"
-                              icon={<Check className="size-4" />}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                updateBookingStatus(booking.id, 'completed')
-                              }}
-                              loading={actionLoading === booking.id}
-                            >
-                              Mark Complete
-                            </Button>
-                          )}
-                        </>
+                            )}
+                          </>
+                        )}
+                      {(booking.status === 'pending' || booking.status === 'confirmed') && (
+                        <p className="w-full basis-full text-xs text-gray-500">
+                          Work begins only after both you and the other party confirm you are ready.
+                          Customer: {booking.customer_ready_in_progress ? '✓' : '…'} · Provider:{' '}
+                          {booking.provider_ready_in_progress ? '✓' : '…'}
+                        </p>
                       )}
 
                       {/* Customer: edit pending booking */}
@@ -839,18 +904,108 @@ export function MyBookings() {
                             </span>
                           </div>
                           <p className="text-xs text-gray-400">
-                            Funds are held securely. Once both parties confirm satisfaction the payment is released to the provider.
+                            Funds are reserved from your wallet (not withdrawable) until the job is completed or
+                            cancelled. A platform fee (currently {platformFeePercent ?? 10}% of the job amount)
+                            supports the marketplace and dispute prevention; the provider receives the remainder.
+                            Once both parties confirm satisfaction, the agreed amount is released.
                           </p>
+                          <div className="w-full rounded-lg border border-gray-200 bg-white/80 p-3 space-y-2">
+                            <p className="text-sm font-medium text-gray-800">Negotiated settlement</p>
+                            {booking.payments[0].settlement_customer_agreed &&
+                            booking.payments[0].settlement_provider_agreed &&
+                            booking.payments[0].settlement_proposed_amount != null ? (
+                              <p className="text-sm text-gray-700">
+                                Both parties agreed to pay{' '}
+                                <strong>{formatCurrency(booking.payments[0].settlement_proposed_amount)}</strong>{' '}
+                                from escrow (held up to {formatCurrency(booking.agreed_price ?? 0)}).
+                              </p>
+                            ) : (
+                              <>
+                                <p className="text-xs text-gray-500">
+                                  Propose a lower final price if the service did not match the quote. The other party must accept before you both confirm satisfaction.
+                                </p>
+                                <div className="flex flex-wrap items-end gap-2">
+                                  <Input
+                                    label="Amount (BWP)"
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    className="max-w-[10rem]"
+                                    value={settlementDraft[booking.payments?.[0]?.id ?? ''] ?? ''}
+                                    onChange={(e) =>
+                                      setSettlementDraft((prev) => ({
+                                        ...prev,
+                                        [booking.payments?.[0]?.id ?? '']: e.target.value,
+                                      }))
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      void proposeSettlement(booking)
+                                    }}
+                                    loading={actionLoading === booking.id}
+                                  >
+                                    Propose
+                                  </Button>
+                                </div>
+                                {booking.payments[0].settlement_proposed_amount != null &&
+                                  !(
+                                    booking.payments[0].settlement_customer_agreed &&
+                                    booking.payments[0].settlement_provider_agreed
+                                  ) && (
+                                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                                      <span>
+                                        Pending: {formatCurrency(booking.payments[0].settlement_proposed_amount)} (
+                                        proposed by {booking.payments[0].settlement_proposed_by})
+                                      </span>
+                                      {((isProvider &&
+                                        booking.payments[0].settlement_proposed_by === 'customer') ||
+                                        (!isProvider &&
+                                          booking.payments[0].settlement_proposed_by === 'provider')) && (
+                                        <Button
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            void agreeToSettlement(booking)
+                                          }}
+                                          loading={actionLoading === booking.id}
+                                        >
+                                          Accept proposed amount
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                              </>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 text-sm text-gray-500">
                             <span>Customer: {booking.payments[0].customer_confirmed ? '✓ Confirmed' : 'Pending'}</span>
                             <span>&bull;</span>
                             <span>Provider: {booking.payments[0].provider_confirmed ? '✓ Confirmed' : 'Pending'}</span>
                           </div>
+                          {(() => {
+                            const pay0 = booking.payments[0]
+                            const settlementPending =
+                              pay0.settlement_proposed_amount != null &&
+                              !(pay0.settlement_customer_agreed && pay0.settlement_provider_agreed)
+                            return (
+                          <div className="flex flex-col gap-2">
+                            {settlementPending && (
+                              <p className="text-xs text-amber-700">
+                                Finish agreeing on the settlement amount (both sides must accept) before you can
+                                confirm satisfaction.
+                              </p>
+                            )}
                           <div className="flex flex-wrap gap-2">
                             {!(isProvider ? booking.payments[0].provider_confirmed : booking.payments[0].customer_confirmed) && (
                               <Button
                                 size="sm"
                                 icon={<Check className="size-4" />}
+                                disabled={settlementPending}
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   confirmSatisfaction(booking.id)
@@ -874,6 +1029,9 @@ export function MyBookings() {
                               Raise Dispute
                             </Button>
                           </div>
+                        </div>
+                            )
+                          })()}
                         </div>
                       )}
 
@@ -1022,7 +1180,7 @@ export function MyBookings() {
                         </Button>
                       )}
 
-                      {/* Cancel (before in_progress) */}
+                      {/* Cancel (before in_progress) — releases shadow funds for wallet-funded jobs */}
                       {canCancel(booking) && (
                         <Button
                           size="sm"
@@ -1031,11 +1189,11 @@ export function MyBookings() {
                           icon={<X className="size-4" />}
                           onClick={(e) => {
                             e.stopPropagation()
-                            updateBookingStatus(booking.id, 'cancelled')
+                            void cancelBookingFlow(booking.id)
                           }}
                           loading={actionLoading === booking.id}
                         >
-                          Cancel Booking
+                          Cancel booking
                         </Button>
                       )}
 
@@ -1261,31 +1419,41 @@ export function MyBookings() {
         title="Pay from Wallet"
         size="md"
       >
-        {paymentModal && (
+        {paymentModal && (() => {
+          const agreed = paymentModal.agreed_price ?? 0
+          const avail =
+            walletBalance != null && walletReserved != null
+              ? walletBalance - walletReserved
+              : walletBalance
+          const short = avail != null && avail < agreed
+          return (
           <div className="space-y-4">
             <div className="flex items-center justify-between rounded-lg bg-gray-50 p-4">
               <div>
                 <p className="text-sm text-gray-500">Amount to pay</p>
                 <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(paymentModal.agreed_price ?? 0)}
+                  {formatCurrency(agreed)}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-gray-500">Your wallet balance</p>
+                <p className="text-sm text-gray-500">Withdrawable balance</p>
                 <p className={`text-lg font-semibold ${
-                  walletBalance !== null && walletBalance < (paymentModal.agreed_price ?? 0)
-                    ? 'text-danger-600'
-                    : 'text-success-600'
+                  short ? 'text-danger-600' : 'text-success-600'
                 }`}>
-                  {walletBalance !== null ? formatCurrency(walletBalance) : '—'}
+                  {avail != null ? formatCurrency(avail) : '—'}
                 </p>
+                {walletReserved != null && walletReserved > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {formatCurrency(walletReserved)} reserved for other jobs
+                  </p>
+                )}
               </div>
             </div>
 
-            {walletBalance !== null && walletBalance < (paymentModal.agreed_price ?? 0) && (
+            {short && (
               <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">
-                <strong>Insufficient balance.</strong> You need{' '}
-                {formatCurrency((paymentModal.agreed_price ?? 0) - walletBalance)} more.{' '}
+                <strong>Insufficient withdrawable balance.</strong> You need{' '}
+                {formatCurrency(agreed - (avail ?? 0))} more (funds reserved for accepted quotes cannot be used).{' '}
                 <a href={ROUTES.WALLET} className="underline font-medium">Top up your wallet</a> first.
               </div>
             )}
@@ -1306,17 +1474,15 @@ export function MyBookings() {
               <Button
                 onClick={submitPayment}
                 loading={actionLoading === paymentModal.id}
-                disabled={
-                  walletBalance !== null &&
-                  walletBalance < (paymentModal.agreed_price ?? 0)
-                }
+                disabled={avail != null && avail < agreed}
                 icon={<Wallet className="size-4" />}
               >
                 Confirm Payment
               </Button>
             </div>
           </div>
-        )}
+          )
+        })()}
       </Modal>
     </div>
   )

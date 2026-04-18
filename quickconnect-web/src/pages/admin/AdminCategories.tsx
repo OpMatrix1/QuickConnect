@@ -18,8 +18,6 @@ import type { ServiceCategory } from '@/lib/types'
 import {
   Button,
   Card,
-  CardHeader,
-  CardContent,
   Badge,
   Input,
   Textarea,

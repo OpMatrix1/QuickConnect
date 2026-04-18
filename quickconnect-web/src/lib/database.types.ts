@@ -423,6 +423,7 @@ export type Database = {
           provider_id: string
           service_id: string | null
           looking_for_response_id: string | null
+          quote_id: string | null
           status: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_date: string | null
           scheduled_time: string | null
@@ -430,6 +431,8 @@ export type Database = {
           location_address: string | null
           agreed_price: number | null
           notes: string | null
+          customer_ready_in_progress: boolean
+          provider_ready_in_progress: boolean
           created_at: string
           updated_at: string
         }
@@ -439,6 +442,7 @@ export type Database = {
           provider_id: string
           service_id?: string | null
           looking_for_response_id?: string | null
+          quote_id?: string | null
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_date?: string | null
           scheduled_time?: string | null
@@ -446,6 +450,8 @@ export type Database = {
           location_address?: string | null
           agreed_price?: number | null
           notes?: string | null
+          customer_ready_in_progress?: boolean
+          provider_ready_in_progress?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -455,6 +461,7 @@ export type Database = {
           provider_id?: string
           service_id?: string | null
           looking_for_response_id?: string | null
+          quote_id?: string | null
           status?: 'pending' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
           scheduled_date?: string | null
           scheduled_time?: string | null
@@ -462,6 +469,8 @@ export type Database = {
           location_address?: string | null
           agreed_price?: number | null
           notes?: string | null
+          customer_ready_in_progress?: boolean
+          provider_ready_in_progress?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -614,6 +623,10 @@ export type Database = {
           transaction_ref: string | null
           customer_confirmed: boolean
           provider_confirmed: boolean
+          settlement_proposed_amount: number | null
+          settlement_proposed_by: 'customer' | 'provider' | null
+          settlement_customer_agreed: boolean
+          settlement_provider_agreed: boolean
           dispute_customer_statement: string | null
           dispute_provider_statement: string | null
           dispute_initiated_by: 'customer' | 'provider' | null
@@ -630,6 +643,10 @@ export type Database = {
           transaction_ref?: string | null
           customer_confirmed?: boolean
           provider_confirmed?: boolean
+          settlement_proposed_amount?: number | null
+          settlement_proposed_by?: 'customer' | 'provider' | null
+          settlement_customer_agreed?: boolean
+          settlement_provider_agreed?: boolean
           dispute_customer_statement?: string | null
           dispute_provider_statement?: string | null
           dispute_initiated_by?: 'customer' | 'provider' | null
@@ -646,6 +663,10 @@ export type Database = {
           transaction_ref?: string | null
           customer_confirmed?: boolean
           provider_confirmed?: boolean
+          settlement_proposed_amount?: number | null
+          settlement_proposed_by?: 'customer' | 'provider' | null
+          settlement_customer_agreed?: boolean
+          settlement_provider_agreed?: boolean
           dispute_customer_statement?: string | null
           dispute_provider_statement?: string | null
           dispute_initiated_by?: 'customer' | 'provider' | null
@@ -839,11 +860,30 @@ export type Database = {
           }
         ]
       }
+      app_settings: {
+        Row: {
+          id: number
+          platform_fee_percent: number
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          platform_fee_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          platform_fee_percent?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       wallets: {
         Row: {
           id: string
           user_id: string
           balance: number
+          reserved_balance: number
           created_at: string
           updated_at: string
         }
@@ -851,6 +891,7 @@ export type Database = {
           id?: string
           user_id: string
           balance?: number
+          reserved_balance?: number
           created_at?: string
           updated_at?: string
         }
@@ -858,6 +899,7 @@ export type Database = {
           id?: string
           user_id?: string
           balance?: number
+          reserved_balance?: number
           updated_at?: string
         }
         Relationships: [
@@ -874,7 +916,15 @@ export type Database = {
         Row: {
           id: string
           wallet_id: string
-          type: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          type:
+            | 'top_up'
+            | 'payment_hold'
+            | 'payment_release'
+            | 'payment_refund'
+            | 'withdrawal'
+            | 'dispute_adjustment'
+            | 'shadow_reserve'
+            | 'shadow_release'
           direction: 'credit' | 'debit'
           amount: number
           reference_id: string | null
@@ -884,7 +934,15 @@ export type Database = {
         Insert: {
           id?: string
           wallet_id: string
-          type: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          type:
+            | 'top_up'
+            | 'payment_hold'
+            | 'payment_release'
+            | 'payment_refund'
+            | 'withdrawal'
+            | 'dispute_adjustment'
+            | 'shadow_reserve'
+            | 'shadow_release'
           direction: 'credit' | 'debit'
           amount: number
           reference_id?: string | null
@@ -894,7 +952,15 @@ export type Database = {
         Update: {
           id?: string
           wallet_id?: string
-          type?: 'top_up' | 'payment_hold' | 'payment_release' | 'payment_refund' | 'withdrawal'
+          type?:
+            | 'top_up'
+            | 'payment_hold'
+            | 'payment_release'
+            | 'payment_refund'
+            | 'withdrawal'
+            | 'dispute_adjustment'
+            | 'shadow_reserve'
+            | 'shadow_release'
           direction?: 'credit' | 'debit'
           amount?: number
           reference_id?: string | null

@@ -73,8 +73,25 @@ export function Quotes() {
   const [respondAmount, setRespondAmount] = useState('')
   const [respondMessage, setRespondMessage] = useState('')
   const [respondError, setRespondError] = useState<string | null>(null)
+  const [customerWalletWithdrawable, setCustomerWalletWithdrawable] = useState<number | null>(null)
 
   const isProvider = profile?.role === 'provider'
+
+  const fetchCustomerWalletWithdrawable = useCallback(async () => {
+    if (!user || isProvider) return
+    const { data } = await supabase
+      .from('wallets')
+      .select('balance, reserved_balance')
+      .eq('user_id', user.id as never)
+      .maybeSingle()
+    const w = data as { balance: number; reserved_balance?: number } | null
+    if (!w) {
+      setCustomerWalletWithdrawable(null)
+      return
+    }
+    const avail = w.balance - (w.reserved_balance ?? 0)
+    setCustomerWalletWithdrawable(avail)
+  }, [user, isProvider])
 
   const fetchQuotes = useCallback(async () => {
     if (!user) return
@@ -135,6 +152,10 @@ export function Quotes() {
   useEffect(() => {
     fetchQuotes()
   }, [fetchQuotes])
+
+  useEffect(() => {
+    void fetchCustomerWalletWithdrawable()
+  }, [fetchCustomerWalletWithdrawable])
 
   useEffect(() => {
     const f = searchParams.get('filter')
@@ -222,31 +243,13 @@ export function Quotes() {
     if (!user) return
     setActionLoading(quote.id)
     try {
-      // Create a booking from the quote
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert({
-          customer_id: user.id,
-          provider_id: quote.provider_id,
-          agreed_price: quote.quoted_amount ?? undefined,
-          notes: `From quote: ${quote.service_description}`,
-          status: 'confirmed',
-        } as any)
-        .select('id')
-        .single()
-
-      if (bookingError) throw bookingError
-      const bookingId = (booking as { id: string } | null)?.id
-
-      // Mark quote as accepted and link the booking
-      const { error: quoteError } = await supabase
-        .from('quotes')
-        .update({ status: 'accepted', booking_id: bookingId ?? null } as any)
-        .eq('id' as any, quote.id as any)
-      if (quoteError) throw quoteError
-
+      const { data, error } = await supabase.rpc('customer_accept_quote', {
+        p_quote_id: quote.id,
+      } as never)
+      if (error) throw error
+      const bookingId = (data as { booking_id?: string } | null)?.booking_id
       await fetchQuotes()
-      if (bookingId) navigate(ROUTES.MY_BOOKINGS)
+      if (bookingId) navigate(`${ROUTES.MY_BOOKINGS}?booking=${bookingId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept quote')
     } finally {
@@ -259,14 +262,11 @@ export function Quotes() {
     setRespondError(null)
     setActionLoading(respondModal.id)
     try {
-      const { error } = await supabase
-        .from('quotes')
-        .update({
-          quoted_amount: parseFloat(respondAmount),
-          provider_message: respondMessage.trim() || null,
-          status: 'quoted',
-        } as any)
-        .eq('id' as any, respondModal.id as any)
+      const { error } = await supabase.rpc('provider_submit_quote_response', {
+        p_quote_id: respondModal.id,
+        p_quoted_amount: parseFloat(respondAmount),
+        p_provider_message: respondMessage.trim() || null,
+      } as never)
       if (error) throw error
       setRespondModal(null)
       setRespondAmount('')
@@ -489,13 +489,37 @@ export function Quotes() {
                       {/* Customer: accept or reject a quoted price */}
                       {!isProvider && quote.status === 'quoted' && (
                         <>
+                          {quote.quoted_amount != null && customerWalletWithdrawable != null && (
+                            <p
+                              className={`w-full basis-full text-sm ${
+                                customerWalletWithdrawable < quote.quoted_amount
+                                  ? 'text-danger-600'
+                                  : 'text-gray-600'
+                              }`}
+                            >
+                              Your available wallet balance (not counting reserved funds):{' '}
+                              <strong>{formatCurrency(customerWalletWithdrawable)}</strong>
+                              {customerWalletWithdrawable < quote.quoted_amount && (
+                                <>
+                                  {' '}
+                                  — not enough to accept this quote ({formatCurrency(quote.quoted_amount)}).
+                                  Top up or wait for other jobs to complete.
+                                </>
+                              )}
+                            </p>
+                          )}
                           <Button
                             size="sm"
                             icon={<CheckCircle2 className="size-4" />}
                             loading={actionLoading === quote.id}
+                            disabled={
+                              quote.quoted_amount != null &&
+                              customerWalletWithdrawable != null &&
+                              customerWalletWithdrawable < quote.quoted_amount
+                            }
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleAccept(quote)
+                              void handleAccept(quote)
                             }}
                           >
                             Accept & Book

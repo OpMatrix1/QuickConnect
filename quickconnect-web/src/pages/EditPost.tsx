@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Navigate, useParams } from 'react-router-dom'
-import { Upload, X } from 'lucide-react'
+import { Upload, X, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { ROUTES } from '@/lib/constants'
@@ -233,6 +233,7 @@ export function EditPost() {
   if (!post || post.customer_id !== user.id) {
     return (
       <EmptyState
+        icon={<AlertCircle className="size-12 text-gray-400" />}
         title="Post unavailable"
         description="You can only edit your own Looking For posts."
         action={

@@ -215,14 +215,13 @@ export function ProviderProfile() {
     setQuoteLoading(true)
     setQuoteError(null)
     try {
-      const { error } = await supabase.from('quotes').insert({
-        customer_id: user.id,
-        provider_id: provider.id,
-        service_description: quoteDescription.trim(),
-        budget_min: quoteBudgetMin ? parseFloat(quoteBudgetMin) : null,
-        budget_max: quoteBudgetMax ? parseFloat(quoteBudgetMax) : null,
-        customer_message: quoteMessage.trim() || null,
-      } as any)
+      const { error } = await supabase.rpc('customer_request_provider_quote', {
+        p_provider_id: provider.id,
+        p_service_description: quoteDescription.trim(),
+        p_budget_min: quoteBudgetMin ? parseFloat(quoteBudgetMin) : null,
+        p_budget_max: quoteBudgetMax ? parseFloat(quoteBudgetMax) : null,
+        p_customer_message: quoteMessage.trim() || null,
+      } as never)
       if (error) throw error
       setQuoteSuccess(true)
       setQuoteDescription('')

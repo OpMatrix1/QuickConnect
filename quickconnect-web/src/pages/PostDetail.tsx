@@ -181,28 +181,14 @@ export function PostDetail() {
     setSubmittingQuote(true)
     setQuoteError(null)
     try {
-      const { data: providerData } = await supabase
-        .from('service_providers')
-        .select('id')
-        .eq('profile_id', user.id)
-        .single()
-
-      if (!providerData) {
-        setQuoteError('Provider profile not found')
-        setSubmittingQuote(false)
-        return
-      }
-
-      const { error: insertError } = await supabase.from('looking_for_responses').insert({
-        post_id: post.id,
-        provider_id: (providerData as { id: string }).id,
-        quoted_price: price,
-        message: quoteMessage.trim() || null,
-        estimated_duration: quoteDuration.trim() || null,
-        available_date: quoteDate || null,
-        available_time: quoteTime || null,
-        status: 'pending',
-      } as any)
+      const { error: insertError } = await supabase.rpc('provider_submit_looking_for_response', {
+        p_post_id: post.id,
+        p_quoted_price: price,
+        p_message: quoteMessage.trim() || null,
+        p_estimated_duration: quoteDuration.trim() || null,
+        p_available_date: quoteDate || null,
+        p_available_time: quoteTime || null,
+      } as never)
 
       if (insertError) throw insertError
 
@@ -238,44 +224,13 @@ export function PostDetail() {
 
     setAcceptingId(responseId)
     try {
-      const response = responses.find((r) => r.id === responseId)
-      if (!response) return
+      const { data, error: rpcError } = await supabase.rpc(
+        'customer_accept_looking_for_response',
+        { p_response_id: responseId } as never
+      )
+      if (rpcError) throw rpcError
 
-      const providerId = (response as ResponseWithProviderData).provider_id
-
-      const { data: booking, error: bookingError } = await supabase
-        .from('bookings')
-        .insert({
-          customer_id: user.id,
-          provider_id: providerId,
-          looking_for_response_id: responseId,
-          status: 'pending',
-          agreed_price: response.quoted_price,
-          location_address: post.location_address,
-          scheduled_date: response.available_date,
-          scheduled_time: response.available_time,
-        } as never)
-        .select('id')
-        .single()
-
-      if (bookingError) throw bookingError
-
-      await supabase
-        .from('looking_for_responses')
-        .update({ status: 'accepted' } as never)
-        .eq('id', responseId)
-
-      await supabase
-        .from('looking_for_responses')
-        .update({ status: 'rejected' } as never)
-        .eq('post_id', post.id)
-        .neq('id', responseId)
-
-      await supabase
-        .from('looking_for_posts')
-        .update({ status: 'matched' } as never)
-        .eq('id', post.id)
-
+      const bookingId = (data as { booking_id?: string } | null)?.booking_id
       setPost((p) => (p ? { ...p, status: 'matched' } : null))
       setResponses((prev) =>
         prev.map((r) =>
@@ -283,9 +238,14 @@ export function PostDetail() {
         )
       )
 
-      navigate(ROUTES.BOOKING_DETAIL.replace(':id', (booking as { id: string }).id))
+      if (bookingId) {
+        navigate(`${ROUTES.MY_BOOKINGS}?booking=${bookingId}`)
+      }
     } catch (err) {
       console.error(err)
+      setQuoteError(
+        err instanceof Error ? err.message : 'Could not accept this response. Check your wallet balance.'
+      )
     } finally {
       setAcceptingId(null)
     }

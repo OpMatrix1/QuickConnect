@@ -41,6 +41,9 @@ const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   payment_release: 'Payment Received',
   payment_refund: 'Refund',
   withdrawal: 'Withdrawal',
+  dispute_adjustment: 'Dispute adjustment',
+  shadow_reserve: 'Reserved for job',
+  shadow_release: 'Reservation released',
 }
 
 const PRESET_AMOUNTS = [50, 100, 200, 500, 1000]
@@ -286,7 +289,7 @@ export function WalletPage() {
     await new Promise((r) => setTimeout(r, 2500))
 
     try {
-      const { error } = await supabase.rpc('top_up_wallet', { p_amount: amount })
+      const { error } = await supabase.rpc('top_up_wallet', { p_amount: amount } as never)
       if (error) throw error
       setTopUpStep('success')
       await fetchWallet()
@@ -362,7 +365,7 @@ export function WalletPage() {
         p_amount: amount,
         p_method: withdrawProvider!.id,
         p_destination: destination,
-      })
+      } as never)
       if (error) throw error
       setWithdrawStep('success')
       await fetchWallet()
@@ -431,9 +434,23 @@ export function WalletPage() {
             <CardContent className="py-8">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-sm font-medium text-primary-200">Available Balance</p>
+                  <p className="text-sm font-medium text-primary-200">Withdrawable balance</p>
                   <p className="mt-1 text-4xl font-bold tracking-tight">
-                    {APP_CURRENCY_SYMBOL}{(wallet?.balance ?? 0).toFixed(2)}
+                    {APP_CURRENCY_SYMBOL}
+                    {(
+                      (wallet?.balance ?? 0) -
+                      (wallet?.reserved_balance ?? 0)
+                    ).toFixed(2)}
+                  </p>
+                  <p className="mt-2 text-sm text-primary-200/90">
+                    Total {APP_CURRENCY_SYMBOL}{(wallet?.balance ?? 0).toFixed(2)}
+                    {(wallet?.reserved_balance ?? 0) > 0 && (
+                      <>
+                        {' '}
+                        · Reserved for accepted jobs{' '}
+                        {APP_CURRENCY_SYMBOL}{(wallet?.reserved_balance ?? 0).toFixed(2)}
+                      </>
+                    )}
                   </p>
                   <p className="mt-1 text-sm text-primary-200">{profile.full_name}</p>
                 </div>

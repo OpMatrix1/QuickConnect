@@ -67,7 +67,7 @@ export async function subscribeWebPush(userId: string): Promise<{ ok: boolean; e
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC.trim()),
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC.trim()) as BufferSource,
     })
   }
   const raw = sub.toJSON()
