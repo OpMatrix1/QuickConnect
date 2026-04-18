@@ -1,6 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, Clock, MessageSquare } from 'lucide-react'
+import {
+  Plus,
+  MapPin,
+  Clock,
+  MessageSquare,
+  LayoutGrid,
+  FolderOpen,
+  ExternalLink,
+} from 'lucide-react'
 import { Reveal } from '@/components/ui/Reveal'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -8,13 +16,14 @@ import { ROUTES } from '@/lib/constants'
 import {
   cn,
   formatCurrency,
+  formatDate,
   formatRelativeTime,
   truncate,
   URGENCY_CONFIG,
   POST_STATUS_CONFIG,
   CITIES,
 } from '@/lib/utils'
-import type { ServiceCategory } from '@/lib/types'
+import type { ServiceCategory, PostWithDetails, ResponseWithProvider } from '@/lib/types'
 import {
   Button,
   Card,
@@ -25,23 +34,27 @@ import {
   EmptyState,
 } from '@/components/ui'
 
-type PostWithDetails = {
-  id: string
-  title: string
-  description: string
-  budget_min: number | null
-  budget_max: number | null
-  location_address: string | null
-  urgency: 'low' | 'medium' | 'high' | 'emergency'
-  status: string
-  created_at: string
-  category_id: string
-  profiles: { full_name: string; avatar_url: string | null }
-  service_categories: ServiceCategory
-  response_count?: number
-}
+type BrowsePost = PostWithDetails & { response_count?: number }
 
 type SortOption = 'newest' | 'oldest' | 'budget'
+
+type MyPostWithResponses = PostWithDetails & {
+  looking_for_responses: ResponseWithProvider[]
+}
+
+const RESPONSE_STATUS_LABEL: Record<string, string> = {
+  pending: 'Pending',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+}
+
+function responseStatusBadgeVariant(
+  status: string
+): 'default' | 'success' | 'danger' | 'warning' | 'info' {
+  if (status === 'accepted') return 'success'
+  if (status === 'rejected') return 'danger'
+  return 'warning'
+}
 
 const URGENCY_OPTIONS = [
   { value: '', label: 'All urgencies' },
@@ -57,7 +70,7 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'budget', label: 'Highest budget' },
 ]
 
-function PostCard({ post }: { post: PostWithDetails }) {
+function PostCard({ post }: { post: BrowsePost }) {
   const budgetRange =
     post.budget_min != null || post.budget_max != null
       ? `${post.budget_min != null ? formatCurrency(post.budget_min) : '?'} - ${post.budget_max != null ? formatCurrency(post.budget_max) : '?'}`
@@ -131,11 +144,127 @@ function PostCard({ post }: { post: PostWithDetails }) {
   )
 }
 
+function MyPostCard({ post }: { post: MyPostWithResponses }) {
+  const responses = [...(post.looking_for_responses || [])].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )
+  const budgetRange =
+    post.budget_min != null || post.budget_max != null
+      ? `${post.budget_min != null ? formatCurrency(post.budget_min) : '?'} - ${post.budget_max != null ? formatCurrency(post.budget_max) : '?'}`
+      : 'Budget not specified'
+  const urgencyConfig = URGENCY_CONFIG[post.urgency]
+  const statusConfig = POST_STATUS_CONFIG[post.status as keyof typeof POST_STATUS_CONFIG]
+
+  return (
+    <Card padding="md" className="h-full border-gray-200">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <Link
+              to={ROUTES.POST_DETAIL.replace(':id', post.id)}
+              className="group font-semibold text-gray-900 hover:text-primary-600 line-clamp-2"
+            >
+              {post.title}
+              <ExternalLink className="ml-1 inline size-3.5 opacity-0 transition-opacity group-hover:opacity-100" />
+            </Link>
+            <p className="mt-1 text-sm text-gray-600 line-clamp-2">{truncate(post.description, 140)}</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-1.5">
+            <Badge variant={post.urgency === 'emergency' ? 'danger' : post.urgency === 'high' ? 'warning' : 'info'}>
+              {urgencyConfig?.label ?? post.urgency}
+            </Badge>
+            {statusConfig && (
+              <Badge variant={post.status === 'active' ? 'success' : 'default'}>{statusConfig.label}</Badge>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
+          <span className="font-medium text-primary-600">{budgetRange}</span>
+          {post.location_address && (
+            <span className="flex items-center gap-1">
+              <MapPin className="size-4 shrink-0" />
+              {truncate(post.location_address, 48)}
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Clock className="size-4 shrink-0" />
+            {formatRelativeTime(post.created_at)}
+          </span>
+          <span className="flex items-center gap-1">
+            <MessageSquare className="size-4 shrink-0" />
+            {responses.length} {responses.length === 1 ? 'quote' : 'quotes'}
+          </span>
+        </div>
+
+        {post.service_categories?.name && (
+          <p className="text-xs font-medium text-primary-800">
+            {post.service_categories.name}
+          </p>
+        )}
+
+        <div className="border-t border-gray-100 pt-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Provider quotes & replies
+          </p>
+          {responses.length === 0 ? (
+            <p className="text-sm text-gray-500">No quotes yet. Providers will appear here when they respond.</p>
+          ) : (
+            <ul className="space-y-3">
+              {responses.map((r) => {
+                const sp = r.service_providers
+                const prof = sp?.profiles
+                const name = sp?.business_name || prof?.full_name || 'Provider'
+                return (
+                  <li
+                    key={r.id}
+                    className="flex gap-3 rounded-lg bg-gray-50 p-3 text-sm"
+                  >
+                    <span className="shrink-0">
+                      <Avatar src={prof?.avatar_url} fallback={name} size="sm" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-gray-900">{name}</span>
+                        <Badge variant={responseStatusBadgeVariant(r.status)}>
+                          {RESPONSE_STATUS_LABEL[r.status] ?? r.status}
+                        </Badge>
+                      </div>
+                      <p className="mt-0.5 font-semibold text-primary-700">{formatCurrency(r.quoted_price)}</p>
+                      {r.message && (
+                        <p className="mt-1 text-gray-600 line-clamp-3">{r.message}</p>
+                      )}
+                      <p className="mt-1 text-xs text-gray-400">
+                        {formatDate(r.created_at)}
+                        {r.estimated_duration ? ` · ${r.estimated_duration}` : ''}
+                      </p>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          <div className="mt-3">
+            <Link to={ROUTES.POST_DETAIL.replace(':id', post.id)}>
+              <Button variant="secondary" size="sm" className="w-full sm:w-auto">
+                Open post — accept or manage quotes
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
 export function LookingFor() {
-  const { profile } = useAuth()
-  const [posts, setPosts] = useState<PostWithDetails[]>([])
+  const { user, profile } = useAuth()
+  const [listMode, setListMode] = useState<'browse' | 'mine'>('browse')
+  const [posts, setPosts] = useState<BrowsePost[]>([])
+  const [myPosts, setMyPosts] = useState<MyPostWithResponses[]>([])
   const [categories, setCategories] = useState<ServiceCategory[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loadingBrowse, setLoadingBrowse] = useState(true)
+  const [loadingMine, setLoadingMine] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -152,8 +281,10 @@ export function LookingFor() {
   }, [])
 
   useEffect(() => {
+    if (listMode !== 'browse') return
+
     async function fetchPosts() {
-      setLoading(true)
+      setLoadingBrowse(true)
       setError(null)
       try {
         let query = supabase
@@ -201,7 +332,7 @@ export function LookingFor() {
 
         if (fetchError) throw fetchError
 
-        const postsArray = (postsData || []) as PostWithDetails[]
+        const postsArray = (postsData || []) as unknown as BrowsePost[]
         const postIds = postsArray.map((p) => p.id)
         if (postIds.length > 0) {
           const { data: responsesData } = await supabase
@@ -228,75 +359,154 @@ export function LookingFor() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load posts')
       } finally {
-        setLoading(false)
+        setLoadingBrowse(false)
       }
     }
 
     fetchPosts()
-  }, [categoryFilter, cityFilter, urgencyFilter, sortBy])
+  }, [listMode, categoryFilter, cityFilter, urgencyFilter, sortBy])
+
+  const fetchMyPosts = useCallback(async () => {
+    if (!user?.id) return
+    setLoadingMine(true)
+    setError(null)
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('looking_for_posts')
+        .select(
+          `
+          *,
+          profiles!looking_for_posts_customer_id_fkey(full_name, avatar_url),
+          service_categories(id, name),
+          looking_for_responses (
+            id,
+            post_id,
+            provider_id,
+            quoted_price,
+            message,
+            estimated_duration,
+            available_date,
+            available_time,
+            status,
+            created_at,
+            service_providers!looking_for_responses_provider_id_fkey(
+              business_name,
+              rating_avg,
+              review_count,
+              profiles!service_providers_profile_id_fkey(full_name, avatar_url)
+            )
+          )
+        `
+        )
+        .eq('customer_id', user.id)
+        .order('created_at', { ascending: false })
+
+      if (fetchError) throw fetchError
+
+      const rows = (data || []).map((row) => ({
+        ...(row as MyPostWithResponses),
+        looking_for_responses: (row as MyPostWithResponses).looking_for_responses ?? [],
+      }))
+      setMyPosts(rows)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load your posts')
+    } finally {
+      setLoadingMine(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    if (listMode !== 'mine' || !user?.id) return
+    fetchMyPosts()
+  }, [listMode, user?.id, fetchMyPosts])
 
   const isCustomer = profile?.role === 'customer'
+  const loading = listMode === 'browse' ? loadingBrowse : loadingMine
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
             Looking For
           </h1>
           <p className="mt-1 text-gray-600">
-            Browse active posts and find service opportunities.
+            {listMode === 'mine'
+              ? 'Your posts, provider quotes, and reply status in one place.'
+              : 'Browse active posts and find service opportunities.'}
           </p>
         </div>
-        {isCustomer && (
-          <Link to={ROUTES.CREATE_POST}>
-            <Button variant="primary" icon={<Plus className="size-5" />}>
-              Create Post
-            </Button>
-          </Link>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {isCustomer && (
+            <>
+              <Button
+                type="button"
+                variant={listMode === 'browse' ? 'primary' : 'secondary'}
+                icon={<LayoutGrid className="size-5" />}
+                onClick={() => setListMode('browse')}
+              >
+                Browse
+              </Button>
+              <Button
+                type="button"
+                variant={listMode === 'mine' ? 'primary' : 'secondary'}
+                icon={<FolderOpen className="size-5" />}
+                onClick={() => setListMode('mine')}
+              >
+                My posts
+              </Button>
+              <Link to={ROUTES.CREATE_POST}>
+                <Button variant="primary" icon={<Plus className="size-5" />}>
+                  Create Post
+                </Button>
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Category"
-            options={[
-              { value: '', label: 'All categories' },
-              ...categories.map((c) => ({ value: c.id, label: c.name })),
-            ]}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          />
+      {listMode === 'browse' && (
+        <div className="flex flex-wrap gap-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Category"
+              options={[
+                { value: '', label: 'All categories' },
+                ...categories.map((c) => ({ value: c.id, label: c.name })),
+              ]}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="City"
+              options={[
+                { value: '', label: 'All cities' },
+                ...CITIES.map((c) => ({ value: c, label: c })),
+              ]}
+              value={cityFilter}
+              onChange={(e) => setCityFilter(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Urgency"
+              options={URGENCY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              value={urgencyFilter}
+              onChange={(e) => setUrgencyFilter(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[140px] flex-1">
+            <Select
+              label="Sort"
+              options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+            />
+          </div>
         </div>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="City"
-            options={[
-              { value: '', label: 'All cities' },
-              ...CITIES.map((c) => ({ value: c, label: c })),
-            ]}
-            value={cityFilter}
-            onChange={(e) => setCityFilter(e.target.value)}
-          />
-        </div>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Urgency"
-            options={URGENCY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            value={urgencyFilter}
-            onChange={(e) => setUrgencyFilter(e.target.value)}
-          />
-        </div>
-        <div className="min-w-[140px] flex-1">
-          <Select
-            label="Sort"
-            options={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-          />
-        </div>
-      </div>
+      )}
 
       {loading ? (
         <div className="flex min-h-[300px] items-center justify-center">
@@ -306,24 +516,51 @@ export function LookingFor() {
         <div className="rounded-xl border border-danger-200 bg-danger-50 p-6 text-center">
           <p className="text-danger-700">{error}</p>
         </div>
-      ) : posts.length === 0 ? (
+      ) : listMode === 'browse' ? (
+        posts.length === 0 ? (
+          <EmptyState
+            icon={<MessageSquare className="size-12" />}
+            title="No posts found"
+            description="Try adjusting your filters or check back later for new opportunities."
+            action={
+              isCustomer ? (
+                <Link to={ROUTES.CREATE_POST}>
+                  <Button variant="primary">Create First Post</Button>
+                </Link>
+              ) : undefined
+            }
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {posts.map((post, i) => (
+              <Reveal key={post.id} delay={i * 55} animation="scale">
+                <PostCard post={post} />
+              </Reveal>
+            ))}
+          </div>
+        )
+      ) : !user?.id ? (
         <EmptyState
-          icon={<MessageSquare className="size-12" />}
-          title="No posts found"
-          description="Try adjusting your filters or check back later for new opportunities."
+          icon={<FolderOpen className="size-12" />}
+          title="Sign in required"
+          description="Sign in as a customer to see your posts and quotes."
+        />
+      ) : myPosts.length === 0 ? (
+        <EmptyState
+          icon={<FolderOpen className="size-12" />}
+          title="No posts yet"
+          description="Create a post to get quotes from providers. Quotes and replies will show up here."
           action={
-            isCustomer ? (
-              <Link to={ROUTES.CREATE_POST}>
-                <Button variant="primary">Create First Post</Button>
-              </Link>
-            ) : undefined
+            <Link to={ROUTES.CREATE_POST}>
+              <Button variant="primary">Create a post</Button>
+            </Link>
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {posts.map((post, i) => (
-            <Reveal key={post.id} delay={i * 55} animation="scale">
-              <PostCard post={post} />
+        <div className="grid gap-4 lg:grid-cols-2">
+          {myPosts.map((post, i) => (
+            <Reveal key={post.id} delay={i * 45} animation="scale">
+              <MyPostCard post={post} />
             </Reveal>
           ))}
         </div>

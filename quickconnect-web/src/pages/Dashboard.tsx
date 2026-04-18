@@ -139,7 +139,7 @@ export function Dashboard() {
 
     setCustomerQuotedQuotes(
       (quotedList ?? []).map((row) => {
-        const r = row as {
+        const r = row as unknown as {
           id: string
           service_description: string
           created_at: string
@@ -182,7 +182,7 @@ export function Dashboard() {
 
     setProviderPendingQuotes(
       (pendingQRows ?? []).map((row) => {
-        const r = row as {
+        const r = row as unknown as {
           id: string
           service_description: string
           created_at: string

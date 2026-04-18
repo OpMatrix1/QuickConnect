@@ -10,7 +10,8 @@ export default defineConfig({
     react(),
     tailwindcss(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' avoids silent reloads that feel like random logouts; pair with registerSW in main.tsx
+      registerType: 'prompt',
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'logo.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
@@ -53,22 +54,8 @@ export default defineConfig({
         navigateFallback: '/QuickConnect/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
-          {
-            // Supabase API — network-first, fallback to cache
-            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'supabase-api-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24, // 24 hours
-              },
-              networkTimeoutSeconds: 10,
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
+          // Do not cache Supabase (auth/token refresh + PostgREST). SW-cached API responses
+          // can break sessions and look like unexpected logouts after a "refresh".
           {
             // Google Fonts and other CDN assets
             urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
@@ -116,8 +103,9 @@ export default defineConfig({
           },
         ],
       },
+      // Service worker in dev causes frequent updates/reloads with HMR; keep off unless debugging PWA
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
       },
     }),

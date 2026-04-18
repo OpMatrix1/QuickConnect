@@ -433,6 +433,8 @@ export type Database = {
           notes: string | null
           customer_ready_in_progress: boolean
           provider_ready_in_progress: boolean
+          customer_work_complete: boolean
+          provider_work_complete: boolean
           created_at: string
           updated_at: string
         }
@@ -452,6 +454,8 @@ export type Database = {
           notes?: string | null
           customer_ready_in_progress?: boolean
           provider_ready_in_progress?: boolean
+          customer_work_complete?: boolean
+          provider_work_complete?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -471,6 +475,8 @@ export type Database = {
           notes?: string | null
           customer_ready_in_progress?: boolean
           provider_ready_in_progress?: boolean
+          customer_work_complete?: boolean
+          provider_work_complete?: boolean
           updated_at?: string
         }
         Relationships: [

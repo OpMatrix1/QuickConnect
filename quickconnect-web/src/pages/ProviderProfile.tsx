@@ -110,8 +110,7 @@ export function ProviderProfile() {
       setLoading(true)
       setError(null)
       try {
-        const { data, error: fetchError } = await supabase
-          .from('service_providers')
+        const { data, error: fetchError } = await (supabase.from('service_providers') as any)
           .select(
             `
             *,
@@ -123,7 +122,7 @@ export function ProviderProfile() {
             service_areas(*)
           `
           )
-          .eq('id' as any, id as any)
+          .eq('id', id)
           .single()
 
         if (fetchError) throw fetchError
@@ -132,11 +131,10 @@ export function ProviderProfile() {
         setProvider(data as unknown as ProviderWithDetails)
 
         // Fetch completed jobs count
-        const { count } = await supabase
-          .from('bookings')
+        const { count } = await (supabase.from('bookings') as any)
           .select('id', { count: 'exact', head: true })
-          .eq('provider_id' as any, id as any)
-          .eq('status' as any, 'completed' as any)
+          .eq('provider_id', id)
+          .eq('status', 'completed')
         setCompletedJobs(count ?? 0)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load provider')
@@ -153,10 +151,9 @@ export function ProviderProfile() {
     if (!provider?.id) return
 
     const fetchReviews = async () => {
-      const { data } = await supabase
-        .from('reviews')
+      const { data } = await (supabase.from('reviews') as any)
         .select('*, profiles(*)')
-        .eq('provider_id' as any, provider.id as any)
+        .eq('provider_id', provider.id)
         .order('created_at', { ascending: false })
 
       setReviews((data ?? []) as unknown as ReviewWithProfile[])
@@ -176,11 +173,10 @@ export function ProviderProfile() {
           ? [participant1, participant2]
           : [participant2, participant1]
 
-      const { data: existing } = await supabase
-        .from('conversations')
+      const { data: existing } = await (supabase.from('conversations') as any)
         .select('id')
-        .eq('participant_1' as any, p1 as any)
-        .eq('participant_2' as any, p2 as any)
+        .eq('participant_1', p1)
+        .eq('participant_2', p2)
         .maybeSingle()
 
       const existingId = (existing as { id: string } | null)?.id
@@ -189,12 +185,11 @@ export function ProviderProfile() {
         return
       }
 
-      const { data: inserted, error } = await supabase
-        .from('conversations')
+      const { data: inserted, error } = await (supabase.from('conversations') as any)
         .insert({
           participant_1: p1,
           participant_2: p2,
-        } as any)
+        })
         .select('id')
         .single()
 

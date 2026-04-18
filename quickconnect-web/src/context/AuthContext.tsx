@@ -27,6 +27,37 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const AUTH_TIMEOUT_MS = 12_000
 
+function isAuthLockAcquireTimeout(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'isAcquireTimeout' in err &&
+    (err as { isAcquireTimeout?: boolean }).isAcquireTimeout === true
+  )
+}
+
+/** getSession can throw if the cross-tab auth lock times out — retry instead of treating as logged out. */
+async function getSessionWithLockRetries(): Promise<
+  Awaited<ReturnType<typeof supabase.auth.getSession>>
+> {
+  const delays = [0, 200, 400, 800]
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) {
+      await new Promise((r) => setTimeout(r, delays[i]))
+    }
+    try {
+      return await supabase.auth.getSession()
+    } catch (err) {
+      if (isAuthLockAcquireTimeout(err) && i < delays.length - 1) {
+        continue
+      }
+      console.error('[auth] getSession threw', err)
+      return { data: { session: null }, error: null }
+    }
+  }
+  return { data: { session: null }, error: null }
+}
+
 function withTimeout<T>(promise: PromiseLike<T>, ms = AUTH_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('Request timed out')), ms)
@@ -48,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchProfile = useCallback(async (userId: string) => {
     try {
       const { data } = await withTimeout(
-        supabase.from('profiles').select('*').eq('id', userId).single()
+        supabase.from('profiles').select('*').eq('id', userId as never).single()
       )
       return data as Profile | null
     } catch {
@@ -66,37 +97,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   fetchProfileRef.current = fetchProfile
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setState((prev) => prev.loading ? { ...prev, loading: false } : prev)
-    }, 5000)
+    let cancelled = false
+    let subscription: { unsubscribe: () => void } | null = null
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      clearTimeout(timeout)
-      if (session?.user) {
-        const profile = await fetchProfileRef.current(session.user.id)
-        setState({ user: session.user, session, profile, loading: false })
-      } else {
-        setState({ user: null, session: null, profile: null, loading: false })
-      }
-    }).catch(() => {
-      clearTimeout(timeout)
-      setState({ user: null, session: null, profile: null, loading: false })
-    })
+    const bootstrap = async () => {
+      // Restore session from storage before any UI treats the user as logged out (full page refresh).
+      try {
+        const {
+          data: { session },
+          error,
+        } = await getSessionWithLockRetries()
+        if (cancelled) return
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
+        if (error) {
+          console.error('[auth] getSession', error)
+          setState({ user: null, session: null, profile: null, loading: false })
+        } else if (session?.user) {
           const profile = await fetchProfileRef.current(session.user.id)
+          if (cancelled) return
           setState({ user: session.user, session, profile, loading: false })
         } else {
           setState({ user: null, session: null, profile: null, loading: false })
         }
+      } catch {
+        if (!cancelled) {
+          setState((s) => ({ ...s, loading: false }))
+        }
       }
-    )
+
+      if (cancelled) return
+
+      // IMPORTANT: Do not use an async callback here. GoTrue runs this inside an exclusive lock;
+      // awaiting other Supabase calls (e.g. profile fetch) can deadlock and later surface as bogus sign-outs.
+      const { data } = supabase.auth.onAuthStateChange((event, session) => {
+        if (cancelled) return
+        // Initial hydration is handled by getSession() above; this event can race with null session.
+        if (event === 'INITIAL_SESSION') return
+
+        if (event === 'SIGNED_OUT') {
+          setState({ user: null, session: null, profile: null, loading: false })
+          return
+        }
+
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          setState((prev) => ({
+            ...prev,
+            session,
+            user: session.user,
+            loading: false,
+          }))
+          return
+        }
+
+        if (!session?.user) {
+          return
+        }
+
+        const userId = session.user.id
+        queueMicrotask(() => {
+          void fetchProfileRef.current(userId).then((profile) => {
+            if (cancelled) return
+            setState({ user: session.user, session, profile, loading: false })
+          })
+        })
+      })
+      subscription = data.subscription
+    }
+
+    void bootstrap()
 
     return () => {
-      clearTimeout(timeout)
-      subscription.unsubscribe()
+      cancelled = true
+      subscription?.unsubscribe()
     }
   }, [])
 
@@ -186,8 +258,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!state.user) return { error: 'Not authenticated' }
     const { error } = await supabase
       .from('profiles')
-      .update(updates)
-      .eq('id', state.user.id)
+      .update(updates as never)
+      .eq('id', state.user.id as never)
     if (error) return { error: error.message }
     await refreshProfile()
     return { error: null }

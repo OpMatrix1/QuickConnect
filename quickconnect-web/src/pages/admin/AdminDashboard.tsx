@@ -150,7 +150,7 @@ export function AdminDashboard() {
         setPendingCategoryRequests(catReqRes.count ?? 0)
         setDisputedPaymentCount(disputedCountRes.count ?? 0)
         setDisputedPaymentsPreview(
-          (disputedPreviewRes.data ?? []) as DisputedPreviewPayment[]
+          (disputedPreviewRes.data ?? []) as unknown as DisputedPreviewPayment[]
         )
 
         const payments = (paymentsRes.data || []) as { amount: number }[]

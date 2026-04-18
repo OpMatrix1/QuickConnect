@@ -151,10 +151,9 @@ export function AdminReports() {
   const handleReportAction = async (reportId: string, newStatus: string) => {
     setReportActionLoading(reportId + newStatus)
     try {
-      const { error } = await supabase
-        .from('reports')
-        .update({ status: newStatus } as any)
-        .eq('id' as any, reportId as any)
+      const { error } = await (supabase.from('reports') as any)
+        .update({ status: newStatus })
+        .eq('id', reportId)
       if (error) throw error
       await fetchUserReports()
     } finally {
@@ -165,14 +164,13 @@ export function AdminReports() {
   const handlePostReportAction = async (reportId: string, newStatus: string) => {
     setReportActionLoading(reportId + newStatus)
     try {
-      const { error } = await supabase
-        .from('looking_for_post_reports')
+      const { error } = await (supabase.from('looking_for_post_reports') as any)
         .update({
           status: newStatus,
           reviewed_by: user?.id ?? null,
           reviewed_at: new Date().toISOString(),
-        } as any)
-        .eq('id' as any, reportId as any)
+        })
+        .eq('id', reportId)
       if (error) throw error
       await fetchPostReports()
     } finally {
@@ -189,15 +187,14 @@ export function AdminReports() {
         .eq('id', postId)
       if (deleteError) throw deleteError
 
-      await supabase
-        .from('looking_for_post_reports')
+      await (supabase.from('looking_for_post_reports') as any)
         .update({
           status: 'resolved',
           reviewed_by: user?.id ?? null,
           reviewed_at: new Date().toISOString(),
           admin_notes: 'Post removed by admin',
-        } as any)
-        .eq('id' as any, reportId as any)
+        })
+        .eq('id', reportId)
 
       await fetchPostReports()
     } finally {
@@ -394,7 +391,7 @@ export function AdminReports() {
         })
         setRevenueStats({ total: totalRevenue, byMethod })
 
-        const providers = (providersRes.data || []) as {
+        const providers = (providersRes.data || []) as unknown as {
           id: string
           business_name: string
           rating_avg: number

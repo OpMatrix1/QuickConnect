@@ -4,10 +4,14 @@ import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
 
-// Auto-update the SW; prompt user when a new version is waiting
+// Prompt mode (see vite.config): no silent reload — avoids losing in-memory state / surprise "logouts"
 registerSW({
   onNeedRefresh() {
-    if (confirm('A new version of QuickConnect is available. Reload to update?')) {
+    // Non-blocking: full-page reload only if the user opts in (avoids auth race with forced reload)
+    const apply = window.confirm(
+      'A new version of QuickConnect is ready. Reload now to update? You may need to sign in again if you cancel and reload later.'
+    )
+    if (apply) {
       window.location.reload()
     }
   },
