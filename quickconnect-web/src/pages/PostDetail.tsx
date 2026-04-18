@@ -20,6 +20,7 @@ import {
   formatDate,
   formatTime,
   formatRelativeTime,
+  errorMessageFromUnknown,
   URGENCY_CONFIG,
   POST_STATUS_CONFIG,
 } from '@/lib/utils'
@@ -50,6 +51,8 @@ type ResponseWithProviderData = LookingForResponse & {
   }
 }
 
+type QuoteFieldKey = 'price' | 'message' | 'duration' | 'date' | 'time'
+
 export function PostDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -66,6 +69,18 @@ export function PostDetail() {
   const [quoteTime, setQuoteTime] = useState('')
   const [submittingQuote, setSubmittingQuote] = useState(false)
   const [quoteError, setQuoteError] = useState<string | null>(null)
+  const [quoteFieldErrors, setQuoteFieldErrors] = useState<
+    Partial<Record<QuoteFieldKey, string>>
+  >({})
+
+  const clearQuoteFieldError = (key: QuoteFieldKey) => {
+    setQuoteFieldErrors((prev) => {
+      if (prev[key] === undefined) return prev
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
 
   const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
@@ -164,30 +179,53 @@ export function PostDetail() {
     e.preventDefault()
     if (!user || !post || !profile || profile.role !== 'provider') return
 
+    setQuoteError(null)
+    setQuoteFieldErrors({})
+
+    const fieldErrors: Partial<Record<QuoteFieldKey, string>> = {}
     const price = parseFloat(quotePrice)
-    if (!quotePrice || isNaN(price) || price <= 0) {
-      setQuoteError('Enter a price greater than zero')
-      return
+
+    if (!quotePrice.trim()) {
+      fieldErrors.price = 'Enter your price'
+    } else if (isNaN(price) || price <= 0) {
+      fieldErrors.price = 'Enter a price greater than zero'
     }
-    if (quoteDate) {
+
+    if (!quoteMessage.trim()) {
+      fieldErrors.message = 'Add a message for the poster'
+    }
+    if (!quoteDuration.trim()) {
+      fieldErrors.duration = 'Enter how long the work will take'
+    }
+    if (!quoteDate.trim()) {
+      fieldErrors.date = 'Choose an available date'
+    }
+    if (!quoteTime.trim()) {
+      fieldErrors.time = 'Choose an available time'
+    }
+
+    if (quoteDate.trim() && !fieldErrors.date) {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
       if (new Date(quoteDate) < today) {
-        setQuoteError('Available date cannot be in the past')
-        return
+        fieldErrors.date = 'Available date cannot be in the past'
       }
     }
 
+    if (Object.keys(fieldErrors).length > 0) {
+      setQuoteFieldErrors(fieldErrors)
+      return
+    }
+
     setSubmittingQuote(true)
-    setQuoteError(null)
     try {
       const { error: insertError } = await supabase.rpc('provider_submit_looking_for_response', {
         p_post_id: post.id,
         p_quoted_price: price,
         p_message: quoteMessage.trim() || null,
         p_estimated_duration: quoteDuration.trim() || null,
-        p_available_date: quoteDate || null,
-        p_available_time: quoteTime || null,
+        p_available_date: quoteDate.trim() ? quoteDate : null,
+        p_available_time: quoteTime.trim() ? quoteTime : null,
       } as never)
 
       if (insertError) throw insertError
@@ -197,6 +235,7 @@ export function PostDetail() {
       setQuoteDuration('')
       setQuoteDate('')
       setQuoteTime('')
+      setQuoteFieldErrors({})
       const { data } = await supabase
         .from('looking_for_responses')
         .select(
@@ -213,7 +252,7 @@ export function PostDetail() {
         .order('created_at', { ascending: false })
       setResponses((data || []) as ResponseWithProviderData[])
     } catch (err) {
-      setQuoteError(err instanceof Error ? err.message : 'Failed to submit quote')
+      setQuoteError(errorMessageFromUnknown(err, 'Failed to submit quote'))
     } finally {
       setSubmittingQuote(false)
     }
@@ -244,7 +283,10 @@ export function PostDetail() {
     } catch (err) {
       console.error(err)
       setQuoteError(
-        err instanceof Error ? err.message : 'Could not accept this response. Check your wallet balance.'
+        errorMessageFromUnknown(
+          err,
+          'Could not accept this response. Check your wallet balance.'
+        )
       )
     } finally {
       setAcceptingId(null)
@@ -498,46 +540,79 @@ export function PostDetail() {
             <Card padding="lg">
               <CardHeader>
                 <h3 className="font-semibold text-gray-900">Submit Your Quote</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  The poster must have enough wallet balance to cover your quoted price, or the quote cannot be
+                  submitted.
+                </p>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleSubmitQuote} className="space-y-4">
+                <form noValidate onSubmit={handleSubmitQuote} className="space-y-4">
                   {quoteError && (
                     <p className="text-sm text-danger-600">{quoteError}</p>
                   )}
                   <Input
-                    label="Your Price (P)"
+                    label="Your Price (P) *"
                     type="number"
                     min={0}
                     step={0.01}
                     value={quotePrice}
-                    onChange={(e) => setQuotePrice(e.target.value)}
+                    onChange={(e) => {
+                      setQuotePrice(e.target.value)
+                      clearQuoteFieldError('price')
+                    }}
+                    error={quoteFieldErrors.price}
                     required
+                    aria-required
                   />
                   <Textarea
-                    label="Message"
+                    label="Message *"
                     placeholder="Describe your approach, experience..."
                     value={quoteMessage}
-                    onChange={(e) => setQuoteMessage(e.target.value)}
+                    onChange={(e) => {
+                      setQuoteMessage(e.target.value)
+                      clearQuoteFieldError('message')
+                    }}
                     rows={3}
+                    error={quoteFieldErrors.message}
+                    required
+                    aria-required
                   />
                   <Input
-                    label="Estimated Duration"
+                    label="Estimated Duration *"
                     placeholder="e.g. 2 hours"
                     value={quoteDuration}
-                    onChange={(e) => setQuoteDuration(e.target.value)}
+                    onChange={(e) => {
+                      setQuoteDuration(e.target.value)
+                      clearQuoteFieldError('duration')
+                    }}
+                    error={quoteFieldErrors.duration}
+                    required
+                    aria-required
                   />
                   <div className="grid gap-4 sm:grid-cols-2">
                     <Input
-                      label="Available Date"
+                      label="Available Date *"
                       type="date"
                       value={quoteDate}
-                      onChange={(e) => setQuoteDate(e.target.value)}
+                      onChange={(e) => {
+                        setQuoteDate(e.target.value)
+                        clearQuoteFieldError('date')
+                      }}
+                      error={quoteFieldErrors.date}
+                      required
+                      aria-required
                     />
                     <Input
-                      label="Available Time"
+                      label="Available Time *"
                       type="time"
                       value={quoteTime}
-                      onChange={(e) => setQuoteTime(e.target.value)}
+                      onChange={(e) => {
+                        setQuoteTime(e.target.value)
+                        clearQuoteFieldError('time')
+                      }}
+                      error={quoteFieldErrors.time}
+                      required
+                      aria-required
                     />
                   </div>
                   <Button

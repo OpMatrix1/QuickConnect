@@ -57,6 +57,17 @@ export function truncate(str: string, length: number): string {
   return str.slice(0, length) + '...'
 }
 
+/** Supabase / PostgREST errors are not always `instanceof Error`; still expose `.message` / `.details`. */
+export function errorMessageFromUnknown(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message
+  if (err && typeof err === 'object') {
+    const o = err as Record<string, unknown>
+    if (typeof o.message === 'string' && o.message.trim()) return o.message
+    if (typeof o.details === 'string' && o.details.trim()) return o.details
+  }
+  return fallback
+}
+
 export const URGENCY_CONFIG = {
   low: { label: 'Low', color: 'bg-blue-100 text-blue-700' },
   medium: { label: 'Medium', color: 'bg-yellow-100 text-yellow-700' },

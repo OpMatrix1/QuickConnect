@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, errorMessageFromUnknown } from '@/lib/utils'
 import type { Quote } from '@/lib/types'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -273,7 +273,7 @@ export function Quotes() {
       setRespondMessage('')
       await fetchQuotes()
     } catch (err) {
-      setRespondError(err instanceof Error ? err.message : 'Failed to submit quote')
+      setRespondError(errorMessageFromUnknown(err, 'Failed to submit quote'))
     } finally {
       setActionLoading(null)
     }
