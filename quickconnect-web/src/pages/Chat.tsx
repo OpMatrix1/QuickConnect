@@ -4,7 +4,16 @@ import {
   MessageCircle,
   Send,
   ChevronLeft,
+  Paperclip,
+  HardHat,
+  MapPin,
+  ImageIcon,
+  FileText,
+  Smile,
+  X,
+  Download,
 } from 'lucide-react'
+import EmojiPicker, { type EmojiClickData, Theme } from 'emoji-picker-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
 import { formatRelativeTime, cn } from '@/lib/utils'
@@ -16,6 +25,7 @@ import {
   Spinner,
   EmptyState,
   Input,
+  Modal,
 } from '@/components/ui'
 
 interface ConversationWithProfiles {
@@ -43,6 +53,13 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const activeConversationIdRef = useRef<string | undefined>(undefined)
   const [mobileShowChat, setMobileShowChat] = useState(false)
+  const [locationModalOpen, setLocationModalOpen] = useState(false)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [uploadingMedia, setUploadingMedia] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (conversationId) setMobileShowChat(true)
@@ -197,14 +214,71 @@ export function Chat() {
       })
   }, [conversationId, user, fetchConversations, refreshUnread])
 
+  const getReceiverId = useCallback(() => {
+    if (!conversationId || !user) return null
+    const conv = conversations.find((c) => c.id === conversationId)
+    if (!conv) return null
+    return conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1
+  }, [conversationId, user, conversations])
+
+  // Close attach menu when clicking outside
+  useEffect(() => {
+    if (!attachMenuOpen) return
+    const handler = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setAttachMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [attachMenuOpen])
+
+  const uploadMedia = async (file: File, type: 'image' | 'file'): Promise<{ url: string; name: string } | null> => {
+    const ext = file.name.split('.').pop() ?? 'bin'
+    const path = `${user!.id}/${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('chat-media').upload(path, file)
+    if (error) { setError('Upload failed: ' + error.message); return null }
+    const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path)
+    return { url: urlData.publicUrl, name: file.name }
+  }
+
+  const sendMediaMessage = async (file: File, type: 'image' | 'file') => {
+    if (!conversationId || !user) return
+    const receiverId = getReceiverId()
+    if (!receiverId) return
+    setUploadingMedia(true)
+    try {
+      const result = await uploadMedia(file, type)
+      if (!result) return
+      const { data, error } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          receiver_id: receiverId,
+          content: type === 'image' ? '📷 Image' : `📎 ${result.name}`,
+          is_read: false,
+          message_type: type,
+          media_url: result.url,
+          media_name: result.name,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setMessages((prev) => [...prev, data as Message])
+      fetchConversations()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send media')
+    } finally {
+      setUploadingMedia(false)
+    }
+  }
+
   const sendMessage = async () => {
     if (!newMessage.trim() || !conversationId || !user) return
 
-    const conv = conversations.find((c) => c.id === conversationId)
-    if (!conv) return
-
-    const receiverId =
-      conv.participant_1 === user.id ? conv.participant_2 : conv.participant_1
+    const receiverId = getReceiverId()
+    if (!receiverId) return
 
     setSending(true)
     try {
@@ -216,6 +290,7 @@ export function Chat() {
           receiver_id: receiverId,
           content: newMessage.trim(),
           is_read: false,
+          message_type: 'text',
         })
         .select()
         .single()
@@ -261,6 +336,7 @@ export function Chat() {
     : null
 
   return (
+    <>
     <div className="flex h-[calc(100vh-4.5rem)] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-1 min-h-0">
         <div
@@ -401,6 +477,7 @@ export function Chat() {
                 ) : (
                   messages.map((msg) => {
                     const isOwn = msg.sender_id === user.id
+                    const type = msg.message_type ?? 'text'
                     return (
                       <div
                         key={msg.id}
@@ -411,16 +488,42 @@ export function Chat() {
                       >
                         <div
                           className={cn(
-                            'max-w-[75%] rounded-2xl px-4 py-2',
+                            'max-w-[75%] rounded-2xl overflow-hidden',
+                            type === 'image' ? '' : 'px-4 py-2',
                             isOwn
                               ? 'bg-primary-500 text-white'
                               : 'bg-gray-200 text-gray-900'
                           )}
                         >
-                          <p className="text-sm">{msg.content}</p>
+                          {type === 'image' && msg.media_url ? (
+                            <a href={msg.media_url} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={msg.media_url}
+                                alt={msg.media_name ?? 'Image'}
+                                className="max-w-full max-h-64 object-cover"
+                              />
+                            </a>
+                          ) : type === 'file' && msg.media_url ? (
+                            <div className="flex items-center gap-2 px-4 py-2">
+                              <FileText className="size-5 shrink-0" />
+                              <span className="truncate text-sm flex-1">{msg.media_name ?? 'File'}</span>
+                              <a
+                                href={msg.media_url}
+                                download={msg.media_name ?? true}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Download className="size-4 shrink-0 opacity-70 hover:opacity-100" />
+                              </a>
+                            </div>
+                          ) : (
+                            <p className="text-sm">{msg.content}</p>
+                          )}
                           <p
                             className={cn(
-                              'mt-1 text-xs',
+                              'text-xs px-4 pb-2',
+                              type === 'image' ? 'pt-1' : 'mt-1 px-0 pb-0',
                               isOwn ? 'text-primary-100' : 'text-gray-500'
                             )}
                           >
@@ -434,8 +537,100 @@ export function Chat() {
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="border-t border-gray-200 p-4">
-                <div className="flex gap-2">
+              <div className="border-t border-gray-200 p-3">
+                {/* Emoji picker */}
+                {emojiPickerOpen && (
+                  <div className="absolute bottom-[5.5rem] left-4 z-50 shadow-xl rounded-xl overflow-hidden">
+                    <EmojiPicker
+                      theme={Theme.LIGHT}
+                      onEmojiClick={(data: EmojiClickData) => {
+                        setNewMessage((prev) => prev + data.emoji)
+                        setEmojiPickerOpen(false)
+                      }}
+                      height={350}
+                      width={300}
+                    />
+                  </div>
+                )}
+
+                {/* Hidden file inputs */}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (file) await sendMediaMessage(file, 'image')
+                    e.target.value = ''
+                  }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (file) await sendMediaMessage(file, 'file')
+                    e.target.value = ''
+                  }}
+                />
+
+                <div className="flex items-center gap-2">
+                  {/* Attachment menu */}
+                  <div className="relative" ref={attachMenuRef}>
+                    <button
+                      type="button"
+                      onClick={() => { setAttachMenuOpen((p) => !p); setEmojiPickerOpen(false) }}
+                      title="Attachments"
+                      className={cn(
+                        'flex shrink-0 items-center justify-center rounded-xl border p-2.5 transition-colors',
+                        attachMenuOpen
+                          ? 'border-primary-400 bg-primary-50 text-primary-600'
+                          : 'border-gray-200 bg-white text-gray-500 hover:border-primary-300 hover:bg-primary-50 hover:text-primary-600'
+                      )}
+                    >
+                      {attachMenuOpen ? <X className="size-5" /> : <Paperclip className="size-5" />}
+                    </button>
+
+                    {attachMenuOpen && (
+                      <div className="absolute bottom-full left-0 mb-2 flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-xl min-w-[160px] z-50">
+                        <button
+                          type="button"
+                          onClick={() => { setAttachMenuOpen(false); imageInputRef.current?.click() }}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                        >
+                          <ImageIcon className="size-4 text-green-500" />
+                          Photo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAttachMenuOpen(false); fileInputRef.current?.click() }}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                        >
+                          <FileText className="size-4 text-blue-500" />
+                          File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAttachMenuOpen(false); setEmojiPickerOpen(true) }}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                        >
+                          <Smile className="size-4 text-yellow-500" />
+                          Emoji
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAttachMenuOpen(false); setLocationModalOpen(true) }}
+                          className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                        >
+                          <MapPin className="size-4 text-red-500" />
+                          Location
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
                   <Input
                     placeholder="Type a message..."
                     value={newMessage}
@@ -443,7 +638,7 @@ export function Chat() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
-                        sendMessage()
+                        void sendMessage()
                       }
                     }}
                     className="flex-1"
@@ -451,8 +646,8 @@ export function Chat() {
                   <Button
                     icon={<Send className="size-4" />}
                     onClick={sendMessage}
-                    disabled={!newMessage.trim()}
-                    loading={sending}
+                    disabled={!newMessage.trim() || uploadingMedia}
+                    loading={sending || uploadingMedia}
                   >
                     Send
                   </Button>
@@ -463,5 +658,34 @@ export function Chat() {
         </div>
       </div>
     </div>
+
+    {/* Location sharing — under construction */}
+    <Modal
+      isOpen={locationModalOpen}
+      onClose={() => setLocationModalOpen(false)}
+      title=""
+    >
+      <div className="flex flex-col items-center gap-4 px-2 py-4 text-center">
+        <div className="flex size-20 items-center justify-center rounded-full bg-warning-100">
+          <HardHat className="size-10 text-warning-500" />
+        </div>
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Under Construction</h2>
+          <p className="mt-1.5 text-sm text-gray-500">
+            Location sharing is coming soon. Once the maps integration is set
+            up, you'll be able to pin and share exact meeting spots directly in
+            the chat.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setLocationModalOpen(false)}
+          className="mt-1 w-full rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+        >
+          Got it
+        </button>
+      </div>
+    </Modal>
+    </>
   )
 }

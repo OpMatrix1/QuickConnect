@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useId } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import {
   Menu, X, Bell, User, LayoutDashboard, LogOut, ShieldCheck, Wallet,
   Search, Home as HomeIcon, FileText, Users, CalendarCheck, MessageCircle, ClipboardList,
+  ChevronDown, BookMarked,
 } from 'lucide-react'
 import { cn, getInitials, formatRelativeTime } from '@/lib/utils'
 import { ROUTES, APP_NAME } from '@/lib/constants'
@@ -19,6 +20,7 @@ import {
 const NAV_TABS = [
   { to: ROUTES.HOME,        icon: HomeIcon,        label: 'Home',        authOnly: false },
   { to: ROUTES.LOOKING_FOR, icon: FileText,         label: 'Looking For', authOnly: false },
+  { to: ROUTES.MY_POSTS,    icon: BookMarked,       label: 'My Posts',    authOnly: true  },
   { to: ROUTES.PROVIDERS,   icon: Users,            label: 'Providers',   authOnly: false },
   { to: ROUTES.MY_BOOKINGS, icon: CalendarCheck,    label: 'My Bookings', authOnly: false },
   { to: ROUTES.DASHBOARD,   icon: LayoutDashboard,  label: 'Dashboard',   authOnly: true  },
@@ -26,12 +28,13 @@ const NAV_TABS = [
 
 export function Header() {
   const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { user, profile, signOut } = useAuth()
-  const { notifications, unreadCount, markAllAsRead, markAsRead } = useNotifications()
+  const { notifications, unreadCount, markAllAsRead, markAsRead, clearAll } = useNotifications()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [expandedNotifId, setExpandedNotifId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [webPushOn, setWebPushOn] = useState(false)
   const [webPushBusy, setWebPushBusy] = useState(false)
@@ -58,6 +61,7 @@ export function Header() {
       }
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setNotifOpen(false)
+        setExpandedNotifId(null)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -122,9 +126,12 @@ export function Header() {
         {/* ── CENTER: Nav Tabs ─────────────────────────────── */}
         <nav className="hidden md:flex flex-1 items-center justify-center gap-1">
           {NAV_TABS.filter(({ authOnly }) => !authOnly || !!user).map(({ to, icon: Icon, label }) => {
+            const [toPath, toQuery] = to.split('?')
             const isActive = to === ROUTES.HOME
               ? pathname === '/'
-              : pathname.startsWith(to)
+              : toQuery
+                ? pathname === toPath && search.includes(toQuery)
+                : pathname.startsWith(toPath) && !search.includes('tab=mine')
             return (
               <Link
                 key={to}
@@ -171,6 +178,19 @@ export function Header() {
                   <div className="absolute right-0 mt-2 flex w-80 max-h-[420px] flex-col rounded-xl border border-gray-200 bg-white shadow-xl z-50">
                     <div className="flex shrink-0 items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
                       <p className="text-sm font-semibold text-gray-900">Notifications</p>
+                      {notifications.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void clearAll()
+                            setNotifOpen(false)
+                            setExpandedNotifId(null)
+                          }}
+                          className="text-[11px] font-medium text-gray-400 hover:text-danger-600 transition-colors"
+                        >
+                          Clear all
+                        </button>
+                      )}
                     </div>
                     <div className="min-h-0 flex-1 overflow-y-auto">
                       {notifications.length === 0 ? (
@@ -181,6 +201,8 @@ export function Header() {
                             role: profile?.role ?? null,
                           })
                           const isClickable = Boolean(navTarget)
+                          const isExpanded = expandedNotifId === n.id
+                          const bodyLong = n.body && n.body.length > 80
                           return (
                             <div
                               key={n.id}
@@ -189,46 +211,64 @@ export function Header() {
                                 !n.is_read ? 'bg-primary-50/50' : 'hover:bg-gray-50'
                               )}
                             >
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  await markAsRead(n.id)
-                                  setNotifOpen(false)
-                                  if (navTarget) navigate(navTarget)
-                                }}
-                                className={cn(
-                                  'w-full px-4 py-3 text-left',
-                                  isClickable ? 'cursor-pointer' : 'cursor-default'
-                                )}
-                              >
+                              <div className="px-4 py-3">
                                 <div className="flex items-start gap-2">
                                   {!n.is_read && (
                                     <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary-500" />
                                   )}
-                                  <div className={!n.is_read ? '' : 'pl-4'}>
+                                  <div className={cn('flex-1 min-w-0', !n.is_read ? '' : 'pl-4')}>
                                     <p className="text-sm font-medium text-gray-900 leading-snug">
                                       {n.title}
                                     </p>
+
                                     {n.body && (
-                                      <p className="mt-0.5 text-xs text-gray-500 line-clamp-2">
-                                        {n.body}
-                                      </p>
+                                      <>
+                                        <p className={cn(
+                                          'mt-0.5 text-xs text-gray-500',
+                                          !isExpanded && 'line-clamp-2'
+                                        )}>
+                                          {n.body}
+                                        </p>
+                                        {bodyLong && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setExpandedNotifId(isExpanded ? null : n.id)
+                                            }}
+                                            className="mt-0.5 flex items-center gap-0.5 text-[11px] font-medium text-primary-500 hover:text-primary-700"
+                                          >
+                                            <ChevronDown className={cn(
+                                              'size-3 transition-transform',
+                                              isExpanded && 'rotate-180'
+                                            )} />
+                                            {isExpanded ? 'Show less' : 'Show more'}
+                                          </button>
+                                        )}
+                                      </>
                                     )}
+
                                     <p className="mt-1 text-[11px] text-gray-400">
                                       {formatRelativeTime(n.created_at)}
                                     </p>
-                                    {isClickable ? (
-                                      <p className="mt-1 text-[11px] font-medium text-primary-600">
-                                        Tap to open
-                                      </p>
-                                    ) : (
-                                      <p className="mt-1 text-[11px] text-gray-400">
-                                        Tap to dismiss
-                                      </p>
+
+                                    {isClickable && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          void markAsRead(n.id)
+                                          setNotifOpen(false)
+                                          setExpandedNotifId(null)
+                                          navigate(navTarget!)
+                                        }}
+                                        className="mt-1 text-[11px] font-medium text-primary-600 hover:text-primary-800"
+                                      >
+                                        Tap to open →
+                                      </button>
                                     )}
                                   </div>
                                 </div>
-                              </button>
+                              </div>
                             </div>
                           )
                         })
@@ -432,7 +472,7 @@ export function Header() {
                   <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>
                 </div>
               </div>
-              {NAV_TABS.map(({ to, icon: Icon, label }) => (
+              {NAV_TABS.filter(({ authOnly }) => !authOnly || !!user).map(({ to, icon: Icon, label }) => (
                 <Link
                   key={to}
                   to={to}
@@ -469,7 +509,7 @@ export function Header() {
             </>
           ) : (
             <>
-              {NAV_TABS.map(({ to, icon: Icon, label }) => (
+              {NAV_TABS.filter(({ authOnly }) => !authOnly).map(({ to, icon: Icon, label }) => (
                 <Link
                   key={to}
                   to={to}

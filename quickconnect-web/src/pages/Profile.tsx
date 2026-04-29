@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Navigate, Link, useSearchParams } from 'react-router-dom'
 import {
   Camera,
@@ -13,11 +13,16 @@ import {
   Lock,
   ImageIcon,
   Info,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
+import Cropper from 'react-easy-crop'
+import type { Area } from 'react-easy-crop'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { ROUTES } from '@/lib/constants'
 import { formatDate, CITIES } from '@/lib/utils'
+import { getCroppedImg } from '@/lib/cropImage'
 import type { Profile, ServiceProvider, Service, ServiceArea, ServiceCategory } from '@/lib/types'
 import {
   Button,
@@ -75,6 +80,7 @@ export function Profile() {
   const [bio, setBio] = useState('')
   const [businessName, setBusinessName] = useState('')
   const [businessDescription, setBusinessDescription] = useState('')
+  const [consultationFee, setConsultationFee] = useState('')
 
   // Provider data
   const [provider, setProvider] = useState<ServiceProvider | null>(null)
@@ -90,6 +96,15 @@ export function Profile() {
   const [editingArea, setEditingArea] = useState<ServiceArea | null>(null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [bannerUploading, setBannerUploading] = useState(false)
+
+  // Crop modal state
+  type CropTarget = 'avatar' | 'banner'
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
+  const [cropTarget, setCropTarget] = useState<CropTarget>('avatar')
+  const [crop, setCrop] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null)
+  const [cropApplying, setCropApplying] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const bannerInputRef = useRef<HTMLInputElement>(null)
@@ -168,6 +183,11 @@ export function Profile() {
           setProvider(providerRow)
           setBusinessName(providerRow.business_name || '')
           setBusinessDescription(providerRow.description || '')
+          setConsultationFee(
+            (providerRow as { consultation_fee?: number | null }).consultation_fee != null
+              ? String((providerRow as { consultation_fee?: number | null }).consultation_fee)
+              : ''
+          )
 
           const { data: servicesData } = await supabase
             .from('services')
@@ -246,10 +266,21 @@ export function Profile() {
 
     setSavingBusiness(true)
     try {
+      const parsedFee = consultationFee.trim() ? parseFloat(consultationFee) : null
+      if (parsedFee !== null && (isNaN(parsedFee) || parsedFee <= 0)) {
+        setError('Consultation fee must be a positive amount, or leave it blank to disable')
+        setSavingBusiness(false)
+        return
+      }
+
       if (provider) {
         const { error: providerError } = await supabase
           .from('service_providers')
-          .update({ business_name: businessName.trim(), description: businessDescription.trim() || null } as never)
+          .update({
+            business_name: businessName.trim(),
+            description: businessDescription.trim() || null,
+            consultation_fee: parsedFee,
+          } as never)
           .eq('id', provider.id)
         if (providerError) throw new Error(providerError.message)
       } else {
@@ -259,6 +290,7 @@ export function Profile() {
             profile_id: user.id,
             business_name: businessName.trim() || profile.full_name || 'My Business',
             description: businessDescription.trim() || null,
+            consultation_fee: parsedFee,
           } as never)
           .select()
           .single()
@@ -305,73 +337,84 @@ export function Profile() {
     }
   }
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !user) return
+  /** Opens the crop modal for the selected file */
+  const openCropModal = (file: File, target: CropTarget, inputRef: React.RefObject<HTMLInputElement | null>) => {
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file')
+      if (inputRef.current) inputRef.current.value = ''
       return
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setError('Image must be less than 2MB')
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    const maxMb = target === 'avatar' ? 5 : 5
+    if (file.size > maxMb * 1024 * 1024) {
+      setError(`Image must be less than ${maxMb}MB`)
+      if (inputRef.current) inputRef.current.value = ''
       return
     }
-
-    setAvatarUploading(true)
-    setError(null)
-    try {
-      const ext = file.name.split('.').pop() || 'jpg'
-      const path = `${user.id}/${Date.now()}.${ext}`
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true })
-      if (uploadError) throw uploadError
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const { error: updateError } = await updateProfile({ avatar_url: urlData.publicUrl })
-      if (updateError) throw new Error(updateError)
-      await refreshProfile()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload avatar')
-    } finally {
-      setAvatarUploading(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCropSrc(reader.result as string)
+      setCropTarget(target)
+      setCrop({ x: 0, y: 0 })
+      setZoom(1)
+      setCroppedAreaPixels(null)
     }
+    reader.readAsDataURL(file)
   }
 
-  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
-    if (!file.type.startsWith('image/')) {
-      setError('Please select an image file')
-      return
-    }
-    if (file.size > 3 * 1024 * 1024) {
-      setError('Banner image must be less than 3MB')
-      if (bannerInputRef.current) bannerInputRef.current.value = ''
-      return
-    }
+    openCropModal(file, 'avatar', fileInputRef)
+  }
 
-    setBannerUploading(true)
+  const handleBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    openCropModal(file, 'banner', bannerInputRef)
+  }
+
+  const onCropComplete = useCallback((_: Area, pixels: Area) => {
+    setCroppedAreaPixels(pixels)
+  }, [])
+
+  /** Applies the crop and uploads the result */
+  const handleCropApply = async () => {
+    if (!cropSrc || !croppedAreaPixels || !user) return
+    setCropApplying(true)
     setError(null)
     try {
-      const ext = file.name.split('.').pop() || 'jpg'
-      const path = `${user.id}/banner-${Date.now()}.${ext}`
+      const blob = await getCroppedImg(cropSrc, croppedAreaPixels, 'image/jpeg', 0.92)
+      const ext = 'jpg'
+      const isAvatar = cropTarget === 'avatar'
+      const path = isAvatar
+        ? `${user.id}/${Date.now()}.${ext}`
+        : `${user.id}/banner-${Date.now()}.${ext}`
+
+      if (isAvatar) setAvatarUploading(true)
+      else setBannerUploading(true)
+
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(path, file, { upsert: true })
+        .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
       if (uploadError) throw uploadError
 
       const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const { error: updateError } = await updateProfile({ banner_url: urlData.publicUrl })
+      const profileUpdate = isAvatar
+        ? { avatar_url: urlData.publicUrl }
+        : { banner_url: urlData.publicUrl }
+      const { error: updateError } = await updateProfile(profileUpdate)
       if (updateError) throw new Error(updateError)
+
       await refreshProfile()
-      setSuccess('Banner updated')
+      if (!isAvatar) setSuccess('Banner updated')
+      setCropSrc(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload banner')
+      setError(err instanceof Error ? err.message : 'Failed to upload image')
     } finally {
+      setCropApplying(false)
+      setAvatarUploading(false)
       setBannerUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
       if (bannerInputRef.current) bannerInputRef.current.value = ''
     }
   }
@@ -717,6 +760,20 @@ export function Profile() {
                 placeholder="Describe your services and expertise"
                 rows={4}
               />
+              <div>
+                <Input
+                  label="Consultation Fee (BWP) — optional"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={consultationFee}
+                  onChange={(e) => setConsultationFee(e.target.value)}
+                  placeholder="Leave blank to disable"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  If set, customers will be charged this non-refundable fee for your assessment before you commit to a full quote price.
+                </p>
+              </div>
             </CardContent>
             <CardFooter>
               <Button
@@ -958,6 +1015,79 @@ export function Profile() {
           />
         </>
       )}
+
+      {/* ── Image crop modal ── */}
+      <Modal
+        isOpen={!!cropSrc}
+        onClose={() => {
+          setCropSrc(null)
+          if (fileInputRef.current) fileInputRef.current.value = ''
+          if (bannerInputRef.current) bannerInputRef.current.value = ''
+        }}
+        title={cropTarget === 'avatar' ? 'Crop Profile Picture' : 'Crop Banner Image'}
+        size="md"
+      >
+        <div className="space-y-4">
+          {/* Cropper canvas */}
+          <div
+            className="relative w-full overflow-hidden rounded-xl bg-gray-900"
+            style={{ height: cropTarget === 'avatar' ? 320 : 220 }}
+          >
+            {cropSrc && (
+              <Cropper
+                image={cropSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={cropTarget === 'avatar' ? 1 : 16 / 5}
+                cropShape={cropTarget === 'avatar' ? 'round' : 'rect'}
+                showGrid={false}
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={onCropComplete}
+              />
+            )}
+          </div>
+
+          {/* Zoom slider */}
+          <div className="flex items-center gap-3 px-1">
+            <ZoomOut className="size-4 shrink-0 text-gray-500" />
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.01}
+              value={zoom}
+              onChange={(e) => setZoom(Number(e.target.value))}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-primary-500"
+            />
+            <ZoomIn className="size-4 shrink-0 text-gray-500" />
+          </div>
+
+          <p className="text-center text-xs text-gray-400">
+            Drag to reposition · Scroll or slide to zoom
+          </p>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCropSrc(null)
+                if (fileInputRef.current) fileInputRef.current.value = ''
+                if (bannerInputRef.current) bannerInputRef.current.value = ''
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCropApply}
+              loading={cropApplying}
+              icon={<Camera className="size-4" />}
+            >
+              Apply & Upload
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

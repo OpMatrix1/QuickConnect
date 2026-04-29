@@ -10,6 +10,7 @@ export const ROUTES = {
   FORGOT_PASSWORD: '/forgot-password',
   RESET_PASSWORD: '/reset-password',
   LOOKING_FOR: '/looking-for',
+  MY_POSTS: '/looking-for?tab=mine',
   CREATE_POST: '/looking-for/create',
   EDIT_POST: '/looking-for/:id/edit',
   POST_DETAIL: '/looking-for/:id',

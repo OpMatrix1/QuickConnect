@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Plus,
   MapPin,
@@ -259,7 +259,10 @@ function MyPostCard({ post }: { post: MyPostWithResponses }) {
 
 export function LookingFor() {
   const { user, profile } = useAuth()
-  const [listMode, setListMode] = useState<'browse' | 'mine'>('browse')
+  const [searchParams] = useSearchParams()
+  const [listMode, setListMode] = useState<'browse' | 'mine'>(
+    searchParams.get('tab') === 'mine' ? 'mine' : 'browse'
+  )
   const [posts, setPosts] = useState<BrowsePost[]>([])
   const [myPosts, setMyPosts] = useState<MyPostWithResponses[]>([])
   const [categories, setCategories] = useState<ServiceCategory[]>([])
@@ -271,6 +274,9 @@ export function LookingFor() {
   const [cityFilter, setCityFilter] = useState('')
   const [urgencyFilter, setUrgencyFilter] = useState('')
   const [sortBy, setSortBy] = useState<SortOption>('newest')
+
+  // Stable ref so the realtime subscription can call the latest fetchPosts
+  const fetchPostsRef = useRef<() => void>(() => {})
 
   useEffect(() => {
     async function fetchCategories() {
@@ -363,8 +369,30 @@ export function LookingFor() {
       }
     }
 
+    fetchPostsRef.current = fetchPosts
     fetchPosts()
   }, [listMode, categoryFilter, cityFilter, urgencyFilter, sortBy])
+
+  // Live: subscribe to looking_for_posts changes and refresh browse list
+  useEffect(() => {
+    if (listMode !== 'browse') return
+
+    const ch = supabase
+      .channel('looking-for-posts-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'looking_for_posts' },
+        () => { fetchPostsRef.current() }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'looking_for_responses' },
+        () => { fetchPostsRef.current() }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [listMode])
 
   const fetchMyPosts = useCallback(async () => {
     if (!user?.id) return

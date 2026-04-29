@@ -47,10 +47,11 @@ interface ProviderWithDetails extends ServiceProvider {
   profiles: Profile
   services: (Service & { service_categories: ServiceCategory | null })[]
   service_areas: ServiceArea[]
+  consultation_fee?: number | null
 }
 
 interface ReviewWithProfile extends Review {
-  profiles: Profile
+  customer_profile: Pick<Profile, 'id' | 'full_name' | 'avatar_url'> | null
 }
 
 const REPORT_REASONS = [
@@ -151,12 +152,34 @@ export function ProviderProfile() {
     if (!provider?.id) return
 
     const fetchReviews = async () => {
-      const { data } = await (supabase.from('reviews') as any)
-        .select('*, profiles(*)')
+      const { data: reviewRows, error: reviewErr } = await supabase
+        .from('reviews' as any)
+        .select('*')
         .eq('provider_id', provider.id)
         .order('created_at', { ascending: false })
 
-      setReviews((data ?? []) as unknown as ReviewWithProfile[])
+      if (reviewErr || !reviewRows?.length) {
+        setReviews([])
+        return
+      }
+
+      // Batch-fetch customer profiles
+      const customerIds = [...new Set((reviewRows as Review[]).map((r) => r.customer_id))]
+      const { data: profileRows } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', customerIds)
+
+      const profileMap = new Map(
+        ((profileRows ?? []) as Pick<Profile, 'id' | 'full_name' | 'avatar_url'>[]).map((p) => [p.id, p])
+      )
+
+      setReviews(
+        (reviewRows as Review[]).map((r) => ({
+          ...r,
+          customer_profile: profileMap.get(r.customer_id) ?? null,
+        }))
+      )
     }
 
     fetchReviews()
@@ -224,7 +247,8 @@ export function ProviderProfile() {
       setQuoteBudgetMax('')
       setQuoteMessage('')
     } catch (err) {
-      setQuoteError(err instanceof Error ? err.message : 'Failed to send quote request')
+      const msg = err instanceof Error ? err.message : (err as any)?.message ?? 'Failed to send quote request'
+      setQuoteError(msg)
     } finally {
       setQuoteLoading(false)
     }
@@ -378,17 +402,25 @@ export function ProviderProfile() {
                     Contact Provider
                   </Button>
                   {profile?.role === 'customer' && (
-                    <Button
-                      variant="outline"
-                      icon={<Send className="size-4" />}
-                      onClick={() => {
-                        setQuoteSuccess(false)
-                        setQuoteError(null)
-                        setQuoteModal(true)
-                      }}
-                    >
-                      Request Quote
-                    </Button>
+                    <div className="flex flex-col items-start gap-1">
+                      <Button
+                        variant="outline"
+                        icon={<Send className="size-4" />}
+                        onClick={() => {
+                          setQuoteSuccess(false)
+                          setQuoteError(null)
+                          setQuoteModal(true)
+                        }}
+                      >
+                        Request Quote
+                      </Button>
+                      {provider.consultation_fee && (
+                        <p className="text-xs text-warning-700 flex items-center gap-1">
+                          <AlertCircle className="size-3 shrink-0" />
+                          {formatCurrency(provider.consultation_fee)} consultation fee applies
+                        </p>
+                      )}
+                    </div>
                   )}
                   <Button
                     variant="ghost"
@@ -488,14 +520,14 @@ export function ProviderProfile() {
                   <Card key={review.id} padding="md">
                     <div className="flex gap-4">
                       <Avatar
-                        src={review.profiles?.avatar_url}
-                        fallback={review.profiles?.full_name ?? '?'}
+                        src={review.customer_profile?.avatar_url}
+                        fallback={review.customer_profile?.full_name ?? '?'}
                         size="md"
                       />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium text-gray-900">
-                            {review.profiles?.full_name ?? 'Anonymous'}
+                            {review.customer_profile?.full_name ?? 'Anonymous'}
                           </span>
                           <span className="text-sm text-gray-500">
                             {formatDate(review.created_at)}
@@ -572,7 +604,10 @@ export function ProviderProfile() {
             </div>
             <h3 className="text-lg font-semibold text-gray-900">Quote Request Sent!</h3>
             <p className="text-sm text-gray-600">
-              {provider.business_name} will review your request and send you a quote. You can track it in{' '}
+              {provider.consultation_fee
+                ? `You'll need to pay a ${formatCurrency(provider.consultation_fee)} consultation fee in My Quotes before ${provider.business_name} assesses your job.`
+                : `${provider.business_name} will review your request and send you a quote.`}{' '}
+              Track it in{' '}
               <Link to={ROUTES.QUOTES} className="text-primary-600 underline font-medium">My Quotes</Link>.
             </p>
             <Button onClick={() => setQuoteModal(false)}>Done</Button>
@@ -582,8 +617,27 @@ export function ProviderProfile() {
             <p className="text-sm text-gray-500">
               Describe what you need and your budget. <strong>{provider.business_name}</strong> will respond with a price and timeline.
             </p>
+            {provider.consultation_fee && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning-200 bg-warning-50 p-3 text-sm text-warning-800">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  This provider charges a <strong>{formatCurrency(provider.consultation_fee)}</strong> consultation fee to assess your job before committing to a price. This fee is non-refundable.
+                </span>
+              </div>
+            )}
             {quoteError && (
-              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">{quoteError}</div>
+              <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700 space-y-2">
+                <p>{quoteError}</p>
+                {quoteError.toLowerCase().includes('insufficient') && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(ROUTES.WALLET)}
+                    className="rounded-lg bg-danger-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-danger-700"
+                  >
+                    Top Up Wallet →
+                  </button>
+                )}
+              </div>
             )}
             <Textarea
               label="What do you need? *"

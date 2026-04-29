@@ -175,6 +175,7 @@ export function MyBookings() {
   const [editModal, setEditModal] = useState<BookingWithDetails | null>(null)
   const [reviewRating, setReviewRating] = useState(5)
   const [reviewComment, setReviewComment] = useState('')
+  const [reviewError, setReviewError] = useState<string | null>(null)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
   const [walletReserved, setWalletReserved] = useState<number | null>(null)
   const [settlementDraft, setSettlementDraft] = useState<Record<string, string>>({})
@@ -229,7 +230,7 @@ export function MyBookings() {
             services(title),
             looking_for_responses(looking_for_posts(title)),
             payments(id, status, customer_confirmed, provider_confirmed, settlement_proposed_amount, settlement_proposed_by, settlement_customer_agreed, settlement_provider_agreed),
-            reviews(id)
+            reviews!reviews_booking_id_fkey(id)
           `
           )
           .eq('provider_id', providerId)
@@ -253,7 +254,7 @@ export function MyBookings() {
             services(title),
             looking_for_responses(looking_for_posts(title)),
             payments(id, status, customer_confirmed, provider_confirmed, settlement_proposed_amount, settlement_proposed_by, settlement_customer_agreed, settlement_provider_agreed),
-            reviews(id)
+            reviews!reviews_booking_id_fkey(id)
           `
           )
           .eq('customer_id', user.id)
@@ -486,6 +487,7 @@ export function MyBookings() {
 
   const submitReview = async () => {
     if (!reviewModal || !user) return
+    setReviewError(null)
     setActionLoading(reviewModal.id)
     try {
       const { error } = await supabase.from('reviews').insert({
@@ -495,13 +497,28 @@ export function MyBookings() {
         rating: reviewRating,
         comment: reviewComment || null,
       } as any)
-      if (error) throw error
+      if (error) {
+        // Duplicate = review already submitted; treat as success
+        if ((error as any)?.code === '23505') {
+          setReviewModal(null)
+          setReviewRating(5)
+          setReviewComment('')
+          setReviewError(null)
+          await fetchBookings()
+          return
+        }
+        const msg = (error as any)?.message ?? (error as any)?.details ?? 'Failed to submit review'
+        setReviewError(msg)
+        return
+      }
       setReviewModal(null)
       setReviewRating(5)
       setReviewComment('')
+      setReviewError(null)
       await fetchBookings()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to submit review')
+      const msg = err instanceof Error ? err.message : (err as any)?.message ?? 'Failed to submit review'
+      setReviewError(msg)
     } finally {
       setActionLoading(null)
     }
@@ -1462,7 +1479,7 @@ export function MyBookings() {
       {/* Review Modal */}
       <Modal
         isOpen={!!reviewModal}
-        onClose={() => setReviewModal(null)}
+        onClose={() => { setReviewModal(null); setReviewError(null) }}
         title="Leave a Review"
         size="md"
       >
@@ -1483,8 +1500,13 @@ export function MyBookings() {
               placeholder="Share your experience..."
               rows={4}
             />
+            {reviewError && (
+              <p className="rounded-lg bg-danger-50 px-3 py-2 text-sm text-danger-700">
+                {reviewError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setReviewModal(null)}>
+              <Button variant="outline" onClick={() => { setReviewModal(null); setReviewError(null) }}>
                 Cancel
               </Button>
               <Button

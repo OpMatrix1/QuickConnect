@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Send,
@@ -11,6 +11,8 @@ import {
   AlertCircle,
   FileText,
   Wallet,
+  CreditCard,
+  ClipboardCheck,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ROUTES } from '@/lib/constants'
@@ -37,6 +39,8 @@ interface QuoteWithDetails extends Quote {
     profile_id: string
     profiles?: { full_name: string; avatar_url: string | null }
   }
+  consultation_fee?: number | null
+  consultation_status?: 'awaiting_payment' | 'paid' | 'assessed' | null
 }
 
 type QuoteFilter = 'all' | 'requested' | 'quoted' | 'accepted' | 'rejected'
@@ -75,8 +79,29 @@ export function Quotes() {
   const [respondMessage, setRespondMessage] = useState('')
   const [respondError, setRespondError] = useState<string | null>(null)
   const [customerWalletWithdrawable, setCustomerWalletWithdrawable] = useState<number | null>(null)
+  // Provider: customer's available balance for the open respond modal
+  const [modalCustomerBalance, setModalCustomerBalance] = useState<number | null>(null)
 
   const isProvider = profile?.role === 'provider'
+
+  // Insufficient-funds modal
+  const [insufficientModal, setInsufficientModal] = useState<{
+    quotedAmount: number
+    available: number
+  } | null>(null)
+  const insufficientShownRef = useRef<Set<string>>(new Set())
+
+  // Live "new quote received" banner
+  const [newQuoteBanner, setNewQuoteBanner] = useState<{
+    id: string
+    providerName: string
+    amount: number
+    canAfford: boolean
+  } | null>(null)
+  const newQuoteShownRef = useRef<Set<string>>(new Set())
+
+  // Consultation loading
+  const [consultLoading, setConsultLoading] = useState<string | null>(null)
 
   const fetchCustomerWalletWithdrawable = useCallback(async () => {
     if (!user || isProvider) return
@@ -188,6 +213,34 @@ export function Quotes() {
         (payload) => {
           if (payload.eventType === 'UPDATE' && payload.new) {
             const row = payload.new as QuoteWithDetails
+            const old = payload.old as Partial<QuoteWithDetails>
+
+            // Customer: show live banner when a quote transitions to 'quoted'
+            if (
+              !isProvider &&
+              row.status === 'quoted' &&
+              old.status !== 'quoted' &&
+              row.quoted_amount != null &&
+              !newQuoteShownRef.current.has(row.id)
+            ) {
+              newQuoteShownRef.current.add(row.id)
+              // Look up provider name from existing quotes list
+              setQuotes((prev) => {
+                const existing = prev.find((q) => q.id === row.id)
+                const providerName =
+                  existing?.service_providers?.business_name ?? 'Your provider'
+                setNewQuoteBanner({
+                  id: row.id,
+                  providerName,
+                  amount: row.quoted_amount!,
+                  canAfford:
+                    customerWalletWithdrawable == null ||
+                    customerWalletWithdrawable >= row.quoted_amount!,
+                })
+                return prev
+              })
+            }
+
             setQuotes((prev) => {
               const ix = prev.findIndex((q) => q.id === row.id)
               if (ix === -1) {
@@ -218,6 +271,56 @@ export function Quotes() {
       supabase.removeChannel(channel)
     }
   }, [user?.id, isProvider, providerId, fetchQuotes])
+
+  // Auto-show insufficient funds modal once per quote when customer has a quoted item they can't afford
+  useEffect(() => {
+    if (isProvider || customerWalletWithdrawable == null) return
+    for (const q of quotes) {
+      if (
+        q.status === 'quoted' &&
+        q.quoted_amount != null &&
+        customerWalletWithdrawable < q.quoted_amount &&
+        !insufficientShownRef.current.has(q.id)
+      ) {
+        insufficientShownRef.current.add(q.id)
+        setInsufficientModal({ quotedAmount: q.quoted_amount, available: customerWalletWithdrawable })
+        break
+      }
+    }
+  }, [quotes, customerWalletWithdrawable, isProvider])
+
+  const handlePayConsultation = async (quote: QuoteWithDetails) => {
+    if (!user) return
+    setConsultLoading(quote.id)
+    try {
+      const { error } = await supabase.rpc('customer_pay_consultation_fee', {
+        p_quote_id: quote.id,
+      } as never)
+      if (error) throw error
+      await fetchQuotes()
+      await fetchCustomerWalletWithdrawable()
+    } catch (err) {
+      setError(errorMessageFromUnknown(err, 'Failed to pay consultation fee'))
+    } finally {
+      setConsultLoading(null)
+    }
+  }
+
+  const handleMarkConsultationComplete = async (quote: QuoteWithDetails) => {
+    if (!user) return
+    setConsultLoading(quote.id)
+    try {
+      const { error } = await supabase.rpc('provider_mark_consultation_complete', {
+        p_quote_id: quote.id,
+      } as never)
+      if (error) throw error
+      await fetchQuotes()
+    } catch (err) {
+      setError(errorMessageFromUnknown(err, 'Failed to mark consultation complete'))
+    } finally {
+      setConsultLoading(null)
+    }
+  }
 
   const filteredQuotes =
     filter === 'all'
@@ -309,6 +412,55 @@ export function Quotes() {
 
   return (
     <div className="space-y-6">
+      {/* ── Live "new quote received" banner ── */}
+      {newQuoteBanner && !isProvider && (
+        <div className={`flex items-start gap-3 rounded-xl border p-4 shadow-sm animate-fade-up ${
+          newQuoteBanner.canAfford
+            ? 'border-success-200 bg-success-50'
+            : 'border-warning-200 bg-warning-50'
+        }`}>
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-semibold ${newQuoteBanner.canAfford ? 'text-success-800' : 'text-warning-800'}`}>
+              New quote received — {formatCurrency(newQuoteBanner.amount)}
+            </p>
+            <p className={`mt-0.5 text-sm ${newQuoteBanner.canAfford ? 'text-success-700' : 'text-warning-700'}`}>
+              {newQuoteBanner.providerName} has sent you a price.
+              {!newQuoteBanner.canAfford && ' Your wallet balance is insufficient — top up to accept.'}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {!newQuoteBanner.canAfford && (
+              <button
+                onClick={() => { setNewQuoteBanner(null); navigate(ROUTES.WALLET) }}
+                className="rounded-lg bg-warning-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-warning-700"
+              >
+                Top Up
+              </button>
+            )}
+            <button
+              onClick={() => {
+                setExpandedId(newQuoteBanner.id)
+                setNewQuoteBanner(null)
+              }}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                newQuoteBanner.canAfford
+                  ? 'bg-success-600 text-white hover:bg-success-700'
+                  : 'bg-white text-warning-800 border border-warning-300 hover:bg-warning-100'
+              }`}
+            >
+              View Quote
+            </button>
+            <button
+              onClick={() => setNewQuoteBanner(null)}
+              className="rounded-lg p-1.5 text-gray-400 hover:bg-white hover:text-gray-600"
+              aria-label="Dismiss"
+            >
+              <XCircle className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5">
         <h1 className="text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">My Quotes</h1>
         <p className="mt-1 text-sm text-gray-600 sm:text-base">
@@ -453,19 +605,83 @@ export function Quotes() {
                       </div>
                     )}
 
+                    {/* Consultation status banner */}
+                    {quote.consultation_fee != null && (
+                      <div className={`rounded-lg border p-3 text-sm ${
+                        quote.consultation_status === 'awaiting_payment'
+                          ? 'border-warning-200 bg-warning-50 text-warning-800'
+                          : quote.consultation_status === 'paid'
+                            ? 'border-blue-200 bg-blue-50 text-blue-800'
+                            : 'border-success-200 bg-success-50 text-success-800'
+                      }`}>
+                        <p className="font-medium">
+                          {quote.consultation_status === 'awaiting_payment' && `Consultation fee required: ${formatCurrency(quote.consultation_fee)}`}
+                          {quote.consultation_status === 'paid' && `Consultation fee paid (${formatCurrency(quote.consultation_fee)}) — awaiting provider assessment`}
+                          {quote.consultation_status === 'assessed' && `Consultation complete — provider has assessed and will submit a quote`}
+                        </p>
+                        {quote.consultation_status === 'awaiting_payment' && !isProvider && (
+                          <p className="mt-0.5 text-xs opacity-80">
+                            This is a non-refundable assessment fee. Pay it to allow the provider to evaluate your job before committing to a price.
+                          </p>
+                        )}
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className="flex flex-wrap gap-2 pt-1">
+                      {/* Customer: pay consultation fee */}
+                      {!isProvider && quote.consultation_status === 'awaiting_payment' && (
+                        <Button
+                          size="sm"
+                          icon={<CreditCard className="size-4" />}
+                          loading={consultLoading === quote.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handlePayConsultation(quote)
+                          }}
+                        >
+                          Pay Consultation Fee ({formatCurrency(quote.consultation_fee!)})
+                        </Button>
+                      )}
+
+                      {/* Provider: mark consultation complete (can then send quote) */}
+                      {isProvider && quote.consultation_status === 'paid' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          icon={<ClipboardCheck className="size-4" />}
+                          loading={consultLoading === quote.id}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleMarkConsultationComplete(quote)
+                          }}
+                        >
+                          Mark Assessment Complete
+                        </Button>
+                      )}
+
                       {/* Provider: respond to pending request */}
-                      {isProvider && quote.status === 'requested' && (
+                      {isProvider && quote.status === 'requested' && (quote.consultation_status == null || quote.consultation_status === 'assessed') && (
                         <Button
                           size="sm"
                           icon={<Send className="size-4" />}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation()
                             setRespondError(null)
                             setRespondAmount('')
                             setRespondMessage('')
+                            setModalCustomerBalance(null)
                             setRespondModal(quote)
+                            // Fetch customer's available balance for the info banner
+                            const { data: w } = await supabase
+                              .from('wallets')
+                              .select('balance, reserved_balance')
+                              .eq('user_id', quote.customer_id as never)
+                              .maybeSingle()
+                            if (w) {
+                              const bal = (w as { balance: number; reserved_balance?: number })
+                              setModalCustomerBalance(bal.balance - (bal.reserved_balance ?? 0))
+                            }
                           }}
                         >
                           Send Quote
@@ -578,6 +794,53 @@ export function Quotes() {
         </div>
       )}
 
+      {/* Insufficient funds modal */}
+      <Modal
+        isOpen={!!insufficientModal}
+        onClose={() => setInsufficientModal(null)}
+        title="Insufficient Wallet Balance"
+        size="sm"
+      >
+        {insufficientModal && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-lg bg-danger-50 p-4">
+              <AlertCircle className="mt-0.5 size-5 shrink-0 text-danger-500" />
+              <div className="text-sm text-danger-800">
+                <p className="font-medium">You don't have enough funds to accept this quote.</p>
+                <p className="mt-1">
+                  Quote amount: <strong>{formatCurrency(insufficientModal.quotedAmount)}</strong>
+                  <br />
+                  Available balance: <strong>{formatCurrency(insufficientModal.available)}</strong>
+                  <br />
+                  Shortfall: <strong>{formatCurrency(insufficientModal.quotedAmount - insufficientModal.available)}</strong>
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">
+              Top up your wallet to accept this quote. The Accept button will become available once you have sufficient funds.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                onClick={() => setInsufficientModal(null)}
+              >
+                Dismiss
+              </button>
+              <button
+                className="flex items-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white hover:bg-primary-600"
+                onClick={() => {
+                  setInsufficientModal(null)
+                  navigate(ROUTES.WALLET)
+                }}
+              >
+                <Wallet className="size-4" />
+                Top Up Wallet
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Provider: Respond with quote modal */}
       <Modal
         isOpen={!!respondModal}
@@ -601,6 +864,21 @@ export function Quotes() {
                 </p>
               )}
             </div>
+
+            {/* Soft customer-balance warning — does NOT block submission */}
+            {modalCustomerBalance !== null && respondAmount && parseFloat(respondAmount) > 0 && (
+              <div className={`flex items-start gap-2 rounded-lg border p-3 text-sm ${
+                modalCustomerBalance < parseFloat(respondAmount)
+                  ? 'border-warning-200 bg-warning-50 text-warning-800'
+                  : 'border-success-200 bg-success-50 text-success-800'
+              }`}>
+                <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                {modalCustomerBalance < parseFloat(respondAmount)
+                  ? `Customer's available balance is ${formatCurrency(modalCustomerBalance)} — below your quote of ${formatCurrency(parseFloat(respondAmount))}. You can still send the quote; they'll be prompted to top up before they can accept.`
+                  : `Customer has ${formatCurrency(modalCustomerBalance)} available — enough to accept this quote.`
+                }
+              </div>
+            )}
 
             {respondError && (
               <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-700">{respondError}</div>

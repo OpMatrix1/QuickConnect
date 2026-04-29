@@ -174,11 +174,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string, role: 'customer' | 'provider', businessName?: string) => {
     try {
+      const basePath = import.meta.env.BASE_URL || '/'
+      const emailRedirectTo = new URL(basePath, window.location.origin).toString()
       const { error } = await withTimeout(
         supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: fullName, role, business_name: businessName || null } },
+          options: {
+            data: { full_name: fullName, role, business_name: businessName || null },
+            emailRedirectTo,
+          },
         })
       )
       if (error) return { error: error.message }

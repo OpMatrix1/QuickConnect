@@ -44,6 +44,7 @@ const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   dispute_adjustment: 'Dispute adjustment',
   shadow_reserve: 'Reserved for job',
   shadow_release: 'Reservation released',
+  consultation_fee: 'Consultation Fee',
 }
 
 const PRESET_AMOUNTS = [50, 100, 200, 500, 1000]
@@ -196,16 +197,13 @@ export function WalletPage() {
 
   // — Top-up state —
   const [topUpModal, setTopUpModal] = useState(false)
-  const [topUpStep, setTopUpStep] = useState<1 | 2 | 'processing' | 'success'>(1)
-  const [topUpProvider, setTopUpProvider] = useState<Provider | null>(null)
-  const [topUpPhone, setTopUpPhone] = useState('')
+  const [topUpStep, setTopUpStep] = useState<'enter' | 'processing' | 'success'>('enter')
   const [topUpAmount, setTopUpAmount] = useState('')
   const [topUpError, setTopUpError] = useState<string | null>(null)
 
   // — Withdraw state —
   const [withdrawModal, setWithdrawModal] = useState(false)
-  const [withdrawStep, setWithdrawStep] = useState<1 | 2 | 'processing' | 'success'>(1)
-  const [withdrawProvider, setWithdrawProvider] = useState<Provider | null>(null)
+  const [withdrawStep, setWithdrawStep] = useState<'enter' | 'processing' | 'success'>('enter')
   const [withdrawDestination, setWithdrawDestination] = useState('')
   const [withdrawBankName, setWithdrawBankName] = useState('')
   const [withdrawAmount, setWithdrawAmount] = useState('')
@@ -247,24 +245,52 @@ export function WalletPage() {
     fetchWallet()
   }, [fetchWallet])
 
+  // Live balance updates — subscribe to wallet row changes
+  useEffect(() => {
+    if (!user?.id) return
+
+    const ch = supabase
+      .channel(`wallet-balance:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallets', filter: `user_id=eq.${user.id}` },
+        () => { void fetchWallet() }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [user?.id, fetchWallet])
+
+  // Live transaction list — subscribe to wallet_transactions for this wallet
+  useEffect(() => {
+    if (!wallet?.id) return
+
+    const ch = supabase
+      .channel(`wallet-transactions:${wallet.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'wallet_transactions',
+          filter: `wallet_id=eq.${wallet.id}`,
+        },
+        () => { void fetchWallet() }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [wallet?.id, fetchWallet])
+
   // ---------------------------------------------------------------------------
   // Top-up handlers
   // ---------------------------------------------------------------------------
 
   function openTopUp() {
-    setTopUpStep(1)
-    setTopUpProvider(null)
-    setTopUpPhone('')
+    setTopUpStep('enter')
     setTopUpAmount('')
     setTopUpError(null)
     setTopUpModal(true)
-  }
-
-  function handleTopUpProviderSelect(provider: Provider) {
-    setTopUpProvider(provider)
-    setTopUpPhone('')
-    setTopUpError(null)
-    setTopUpStep(2)
   }
 
   async function handleTopUpConfirm() {
@@ -285,9 +311,6 @@ export function WalletPage() {
     setTopUpError(null)
     setTopUpStep('processing')
 
-    // Simulate USSD / payment gateway delay
-    await new Promise((r) => setTimeout(r, 2500))
-
     try {
       const { error } = await supabase.rpc('top_up_wallet', { p_amount: amount } as never)
       if (error) throw error
@@ -295,8 +318,8 @@ export function WalletPage() {
       await fetchWallet()
       setTimeout(() => setTopUpModal(false), 1800)
     } catch (err) {
-      setTopUpError(err instanceof Error ? err.message : 'Top-up failed')
-      setTopUpStep(2)
+      setTopUpError(err instanceof Error ? err.message : (err as any)?.message ?? 'Top-up failed')
+      setTopUpStep('enter')
     }
   }
 
@@ -305,21 +328,12 @@ export function WalletPage() {
   // ---------------------------------------------------------------------------
 
   function openWithdraw() {
-    setWithdrawStep(1)
-    setWithdrawProvider(null)
+    setWithdrawStep('enter')
     setWithdrawDestination('')
     setWithdrawBankName('')
     setWithdrawAmount('')
     setWithdrawError(null)
     setWithdrawModal(true)
-  }
-
-  function handleWithdrawProviderSelect(provider: Provider) {
-    setWithdrawProvider(provider)
-    setWithdrawDestination('')
-    setWithdrawBankName('')
-    setWithdrawError(null)
-    setWithdrawStep(2)
   }
 
   async function handleWithdrawConfirm() {
@@ -336,43 +350,23 @@ export function WalletPage() {
       setWithdrawError('Maximum withdrawal amount is P5,000 per transaction')
       return
     }
-    if (!withdrawDestination.trim()) {
-      setWithdrawError(
-        withdrawProvider?.type === 'bank'
-          ? 'Please enter your account number'
-          : 'Please enter your mobile number'
-      )
-      return
-    }
-    if (withdrawProvider?.type === 'bank' && !withdrawBankName.trim()) {
-      setWithdrawError('Please enter your bank name')
-      return
-    }
 
     setWithdrawError(null)
     setWithdrawStep('processing')
 
-    // Simulate transfer processing delay
-    await new Promise((r) => setTimeout(r, 2500))
-
-    const destination =
-      withdrawProvider?.type === 'bank'
-        ? `${withdrawBankName} — ${withdrawDestination}`
-        : withdrawDestination
-
     try {
       const { error } = await supabase.rpc('withdraw_from_wallet', {
         p_amount: amount,
-        p_method: withdrawProvider!.id,
-        p_destination: destination,
+        p_method: 'demo',
+        p_destination: 'demo',
       } as never)
       if (error) throw error
       setWithdrawStep('success')
       await fetchWallet()
       setTimeout(() => setWithdrawModal(false), 1800)
     } catch (err) {
-      setWithdrawError(err instanceof Error ? err.message : 'Withdrawal failed')
-      setWithdrawStep(2)
+      setWithdrawError(err instanceof Error ? err.message : (err as any)?.message ?? 'Withdrawal failed')
+      setWithdrawStep('enter')
     }
   }
 
@@ -544,7 +538,7 @@ export function WalletPage() {
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
             <p className="font-semibold mb-1">How the wallet works</p>
             <ul className="space-y-1 list-disc list-inside text-blue-600">
-              <li>Add money using Orange Money, BTC Smega, or Mascom MyZaka.</li>
+              <li>Add money to your wallet to pay for bookings.</li>
               <li>
                 When you pay for a booking, the amount is{' '}
                 <strong>held in escrow</strong> — not yet sent to the provider.
@@ -553,9 +547,7 @@ export function WalletPage() {
                 Once both parties confirm satisfaction, funds are{' '}
                 <strong>automatically released</strong> to the provider.
               </li>
-              <li>
-                Withdraw your balance to mobile money or a bank account at any time.
-              </li>
+              <li>Withdraw your available balance at any time.</li>
             </ul>
           </div>
         </>
@@ -567,56 +559,13 @@ export function WalletPage() {
       <Modal
         isOpen={topUpModal}
         onClose={() => topUpStep !== 'processing' && setTopUpModal(false)}
-        title={
-          topUpStep === 1
-            ? 'Add Money — Choose Method'
-            : topUpStep === 2
-            ? 'Add Money — Enter Amount'
-            : topUpStep === 'processing'
-            ? 'Processing…'
-            : 'Top-Up Complete'
-        }
+        title={topUpStep === 'processing' ? 'Processing…' : topUpStep === 'success' ? 'Top-Up Complete' : 'Add Money'}
         size="sm"
       >
-        {/* Step 1 — choose provider */}
-        {topUpStep === 1 && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Select how you want to load money into your wallet.
-            </p>
-            {PROVIDERS.filter((p) => p.type === 'mobile').map((provider) => (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => handleTopUpProviderSelect(provider)}
-                className={`w-full flex items-center gap-3 rounded-xl border-2 ${provider.border} ${provider.bg} p-4 text-left transition-all hover:opacity-90`}
-              >
-                <span className={`flex size-9 items-center justify-center rounded-full bg-white shadow-sm`}>
-                  <Smartphone className={`size-5 ${provider.color}`} />
-                </span>
-                <span className={`font-semibold ${provider.color}`}>{provider.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Step 2 — enter details + amount */}
-        {topUpStep === 2 && topUpProvider && (
+        {topUpStep === 'enter' && (
           <div className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setTopUpStep(1)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <ChevronLeft className="size-4" />
-              Back
-            </button>
-
-            <div className={`flex items-center gap-3 rounded-xl border ${topUpProvider.border} ${topUpProvider.bg} p-3`}>
-              <Smartphone className={`size-5 ${topUpProvider.color}`} />
-              <span className={`text-sm font-semibold ${topUpProvider.color}`}>
-                {topUpProvider.label}
-              </span>
+            <div className="rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
+              Demo mode — funds are added directly to your wallet.
             </div>
 
             {topUpError && (
@@ -624,14 +573,6 @@ export function WalletPage() {
                 {topUpError}
               </div>
             )}
-
-            <Input
-              label={topUpProvider.inputLabel}
-              type="tel"
-              placeholder={topUpProvider.placeholder}
-              value={topUpPhone}
-              onChange={(e) => setTopUpPhone(e.target.value)}
-            />
 
             <div>
               <p className="mb-2 text-sm font-medium text-gray-700">Amount (BWP)</p>
@@ -658,42 +599,24 @@ export function WalletPage() {
                 step={1}
                 value={topUpAmount}
                 onChange={(e) => setTopUpAmount(e.target.value)}
-                placeholder="Custom amount"
+                placeholder="Enter amount (min P10)"
               />
             </div>
 
-            <p className="text-xs text-gray-400">
-              A USSD prompt will be sent to {topUpPhone || 'your number'} to
-              confirm the payment.
-            </p>
-
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={() => setTopUpModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleTopUpConfirm}
-                disabled={!topUpAmount}
-              >
+              <Button variant="outline" onClick={() => setTopUpModal(false)}>Cancel</Button>
+              <Button onClick={handleTopUpConfirm} disabled={!topUpAmount}>
                 Add {topUpAmount ? formatCurrency(parseFloat(topUpAmount) || 0) : 'Money'}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Processing */}
         {topUpStep === 'processing' && (
-          <ProcessingScreen
-            message="Processing top-up…"
-            subMessage="Waiting for payment confirmation. Please do not close this window."
-          />
+          <ProcessingScreen message="Adding funds…" subMessage="Please wait a moment." />
         )}
-
-        {/* Success */}
         {topUpStep === 'success' && (
-          <SuccessScreen
-            message={`${formatCurrency(parseFloat(topUpAmount))} added to your wallet!`}
-          />
+          <SuccessScreen message={`${formatCurrency(parseFloat(topUpAmount))} added to your wallet!`} />
         )}
       </Modal>
 
@@ -703,89 +626,25 @@ export function WalletPage() {
       <Modal
         isOpen={withdrawModal}
         onClose={() => withdrawStep !== 'processing' && setWithdrawModal(false)}
-        title={
-          withdrawStep === 1
-            ? 'Withdraw — Choose Method'
-            : withdrawStep === 2
-            ? 'Withdraw — Enter Details'
-            : withdrawStep === 'processing'
-            ? 'Processing…'
-            : 'Withdrawal Submitted'
-        }
+        title={withdrawStep === 'processing' ? 'Processing…' : withdrawStep === 'success' ? 'Withdrawal Submitted' : 'Withdraw Funds'}
         size="sm"
       >
-        {/* Step 1 — choose method */}
-        {withdrawStep === 1 && (
-          <div className="space-y-3">
-            <p className="text-sm text-gray-600">
-              Choose where to send your money. Available balance:{' '}
-              <strong>{APP_CURRENCY_SYMBOL}{(wallet?.balance ?? 0).toFixed(2)}</strong>
-            </p>
-            {PROVIDERS.map((provider) => (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => handleWithdrawProviderSelect(provider)}
-                className={`w-full flex items-center gap-3 rounded-xl border-2 ${provider.border} ${provider.bg} p-4 text-left transition-all hover:opacity-90`}
-              >
-                <span className="flex size-9 items-center justify-center rounded-full bg-white shadow-sm">
-                  {provider.type === 'mobile' ? (
-                    <Smartphone className={`size-5 ${provider.color}`} />
-                  ) : (
-                    <Building2 className={`size-5 ${provider.color}`} />
-                  )}
-                </span>
-                <span className={`font-semibold ${provider.color}`}>{provider.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Step 2 — enter destination + amount */}
-        {withdrawStep === 2 && withdrawProvider && (
+        {withdrawStep === 'enter' && (
           <div className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setWithdrawStep(1)}
-              className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700"
-            >
-              <ChevronLeft className="size-4" />
-              Back
-            </button>
-
-            <div className={`flex items-center gap-3 rounded-xl border ${withdrawProvider.border} ${withdrawProvider.bg} p-3`}>
-              {withdrawProvider.type === 'mobile' ? (
-                <Smartphone className={`size-5 ${withdrawProvider.color}`} />
-              ) : (
-                <Building2 className={`size-5 ${withdrawProvider.color}`} />
-              )}
-              <span className={`text-sm font-semibold ${withdrawProvider.color}`}>
-                {withdrawProvider.label}
-              </span>
+            <div className="rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
+              Demo mode — funds are deducted directly from your wallet.
             </div>
+
+            <p className="text-sm text-gray-600">
+              Available balance:{' '}
+              <strong>{APP_CURRENCY_SYMBOL}{((wallet?.balance ?? 0) - (wallet?.reserved_balance ?? 0)).toFixed(2)}</strong>
+            </p>
 
             {withdrawError && (
               <div className="rounded-lg bg-danger-50 p-3 text-sm text-danger-600">
                 {withdrawError}
               </div>
             )}
-
-            {withdrawProvider.type === 'bank' && (
-              <Input
-                label="Bank Name"
-                placeholder="e.g. First National Bank"
-                value={withdrawBankName}
-                onChange={(e) => setWithdrawBankName(e.target.value)}
-              />
-            )}
-
-            <Input
-              label={withdrawProvider.inputLabel}
-              type={withdrawProvider.type === 'mobile' ? 'tel' : 'text'}
-              placeholder={withdrawProvider.placeholder}
-              value={withdrawDestination}
-              onChange={(e) => setWithdrawDestination(e.target.value)}
-            />
 
             <div>
               <p className="mb-2 text-sm font-medium text-gray-700">Amount (BWP)</p>
@@ -812,41 +671,24 @@ export function WalletPage() {
                 step={1}
                 value={withdrawAmount}
                 onChange={(e) => setWithdrawAmount(e.target.value)}
-                placeholder="Custom amount (min P20)"
+                placeholder="Enter amount (min P20)"
               />
             </div>
 
-            <p className="text-xs text-gray-400">
-              Withdrawals are typically processed within 24 hours. Min P20, Max P5,000.
-            </p>
-
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={() => setWithdrawModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleWithdrawConfirm}
-                disabled={!withdrawAmount || !withdrawDestination.trim()}
-              >
+              <Button variant="outline" onClick={() => setWithdrawModal(false)}>Cancel</Button>
+              <Button onClick={handleWithdrawConfirm} disabled={!withdrawAmount}>
                 Withdraw {withdrawAmount ? formatCurrency(parseFloat(withdrawAmount) || 0) : ''}
               </Button>
             </div>
           </div>
         )}
 
-        {/* Processing */}
         {withdrawStep === 'processing' && (
-          <ProcessingScreen
-            message="Processing withdrawal…"
-            subMessage="Sending funds to your account. This may take a moment."
-          />
+          <ProcessingScreen message="Processing withdrawal…" subMessage="Please wait a moment." />
         )}
-
-        {/* Success */}
         {withdrawStep === 'success' && (
-          <SuccessScreen
-            message={`${formatCurrency(parseFloat(withdrawAmount))} withdrawal submitted successfully!`}
-          />
+          <SuccessScreen message={`${formatCurrency(parseFloat(withdrawAmount))} withdrawal submitted!`} />
         )}
       </Modal>
     </div>

@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Edit2,
   Trash2,
+  Wallet,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -97,6 +98,114 @@ export function PostDetail() {
   const isAdmin = profile?.role === 'admin'
   const canSubmitQuote = isProvider && !isOwner && post?.status === 'active'
 
+  // Owner's available wallet balance (fetched only for the post owner)
+  const [ownerBalance, setOwnerBalance] = useState<number | null>(null)
+
+  // Providers who tried to quote but were blocked (insufficient_funds notifications)
+  type BlockedAttempt = {
+    id: string
+    provider_name: string
+    provider_profile_id: string
+    quoted_amount: number
+  }
+  const [blockedAttempts, setBlockedAttempts] = useState<BlockedAttempt[]>([])
+  const [messagingProviderId, setMessagingProviderId] = useState<string | null>(null)
+
+  // Fetch post owner's available wallet balance to show the top-up prompt
+  useEffect(() => {
+    if (!user || !post || post.customer_id !== user.id) return
+
+    const fetchBalance = () =>
+      supabase
+        .from('wallets')
+        .select('balance, reserved_balance')
+        .eq('user_id', user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) {
+            const w = data as { balance: number; reserved_balance?: number }
+            setOwnerBalance(w.balance - (w.reserved_balance ?? 0))
+          }
+        })
+
+    fetchBalance()
+
+    // Live: re-fetch when wallet row changes so blocked-attempt cards disappear on top-up
+    const ch = supabase
+      .channel(`post-detail-wallet:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'wallets', filter: `user_id=eq.${user.id}` },
+        () => { void fetchBalance() }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [user, post?.id])
+
+  // Fetch + live-update blocked-attempt notifications for this post (owner only)
+  useEffect(() => {
+    if (!user || !post || post.customer_id !== user.id) return
+    const postId = post.id
+
+    async function fetchBlockedAttempts() {
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, data')
+        .eq('user_id', user!.id)
+        .eq('type', 'insufficient_funds')
+        .filter('data->>post_id', 'eq', postId)
+        .order('created_at', { ascending: false })
+
+      const attempts: BlockedAttempt[] = (data || [])
+        .map((n) => {
+          const d = n.data as Record<string, unknown>
+          if (!d?.provider_name || !d?.provider_profile_id || !d?.quoted_amount) return null
+          return {
+            id: n.id as string,
+            provider_name: d.provider_name as string,
+            provider_profile_id: d.provider_profile_id as string,
+            quoted_amount: Number(d.quoted_amount),
+          }
+        })
+        .filter(Boolean) as BlockedAttempt[]
+      setBlockedAttempts(attempts)
+    }
+
+    fetchBlockedAttempts()
+
+    const ch = supabase
+      .channel(`blocked-attempts-${postId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const n = payload.new as { type?: string; data?: Record<string, unknown>; id?: string }
+          if (n.type !== 'insufficient_funds') return
+          const d = n.data as Record<string, unknown>
+          if (!d?.post_id || d.post_id !== postId) return
+          if (!d.provider_name || !d.provider_profile_id || !d.quoted_amount) return
+          setBlockedAttempts((prev) => [
+            {
+              id: n.id as string,
+              provider_name: d.provider_name as string,
+              provider_profile_id: d.provider_profile_id as string,
+              quoted_amount: Number(d.quoted_amount),
+            },
+            ...prev.filter((a) => a.provider_profile_id !== (d.provider_profile_id as string)),
+          ])
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(ch) }
+  }, [user, post?.id, post?.customer_id])
+
   useEffect(() => {
     if (!id) return
 
@@ -159,14 +268,12 @@ export function PostDetail() {
       .on(
         'postgres_changes',
         {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'looking_for_responses',
           filter: `post_id=eq.${postId}`,
         },
-        () => {
-          fetchResponses()
-        }
+        () => { fetchResponses() }
       )
       .subscribe()
 
@@ -189,6 +296,14 @@ export function PostDetail() {
       fieldErrors.price = 'Enter your price'
     } else if (isNaN(price) || price <= 0) {
       fieldErrors.price = 'Enter a price greater than zero'
+    } else {
+      const min = post?.budget_min ?? null
+      const max = post?.budget_max ?? null
+      if (min !== null && price < min) {
+        fieldErrors.price = `Price must be at least ${formatCurrency(min)} (post budget minimum)`
+      } else if (max !== null && price > max) {
+        fieldErrors.price = `Price cannot exceed ${formatCurrency(max)} (post budget maximum)`
+      }
     }
 
     if (!quoteMessage.trim()) {
@@ -219,16 +334,28 @@ export function PostDetail() {
 
     setSubmittingQuote(true)
     try {
-      const { error: insertError } = await supabase.rpc('provider_submit_looking_for_response', {
-        p_post_id: post.id,
-        p_quoted_price: price,
-        p_message: quoteMessage.trim() || null,
-        p_estimated_duration: quoteDuration.trim() || null,
-        p_available_date: quoteDate.trim() ? quoteDate : null,
-        p_available_time: quoteTime.trim() ? quoteTime : null,
-      } as never)
+      const { data: rpcData, error: insertError } = await supabase.rpc(
+        'provider_submit_looking_for_response',
+        {
+          p_post_id: post.id,
+          p_quoted_price: price,
+          p_message: quoteMessage.trim() || null,
+          p_estimated_duration: quoteDuration.trim() || null,
+          p_available_date: quoteDate.trim() ? quoteDate : null,
+          p_available_time: quoteTime.trim() ? quoteTime : null,
+        } as never
+      )
 
       if (insertError) throw insertError
+
+      // Soft block: the RPC inserted a notification for the customer but
+      // did not create a response — surface the message to the provider.
+      const result = rpcData as { ok: boolean; reason?: string; message?: string } | null
+      if (result && result.ok === false) {
+        setQuoteError(result.message ?? 'The poster has insufficient wallet balance. They have been notified to top up.')
+        setSubmittingQuote(false)
+        return
+      }
 
       setQuotePrice('')
       setQuoteMessage('')
@@ -298,18 +425,48 @@ export function PostDetail() {
 
     setRejectingId(responseId)
     try {
-      await supabase
-        .from('looking_for_responses')
-        .update({ status: 'rejected' } as never)
-        .eq('id', responseId)
+      const { error } = await supabase.rpc('customer_reject_looking_for_response', {
+        p_response_id: responseId,
+      })
+      if (error) throw error
 
       setResponses((prev) =>
         prev.map((r) => (r.id === responseId ? { ...r, status: 'rejected' } : r))
       )
     } catch (err) {
-      console.error(err)
+      console.error('Failed to reject response:', err)
+      alert('Could not reject the response. Please try again.')
     } finally {
       setRejectingId(null)
+    }
+  }
+
+  async function handleMessageProvider(providerProfileId: string) {
+    if (!user) return
+    setMessagingProviderId(providerProfileId)
+    try {
+      const [p1, p2] = [user.id, providerProfileId].sort()
+      const { data: existing } = await (supabase.from('conversations') as any)
+        .select('id')
+        .eq('participant_1', p1)
+        .eq('participant_2', p2)
+        .maybeSingle()
+      const existingId = (existing as { id: string } | null)?.id
+      if (existingId) {
+        navigate(ROUTES.CHAT_CONVERSATION.replace(':id', existingId))
+        return
+      }
+      const { data: inserted, error } = await (supabase.from('conversations') as any)
+        .insert({ participant_1: p1, participant_2: p2 })
+        .select('id')
+        .single()
+      if (error) throw error
+      const insertedId = (inserted as { id: string } | null)?.id
+      if (insertedId) navigate(ROUTES.CHAT_CONVERSATION.replace(':id', insertedId))
+    } catch {
+      // ignore
+    } finally {
+      setMessagingProviderId(null)
     }
   }
 
@@ -541,8 +698,7 @@ export function PostDetail() {
               <CardHeader>
                 <h3 className="font-semibold text-gray-900">Submit Your Quote</h3>
                 <p className="mt-1 text-sm text-gray-500">
-                  The poster must have enough wallet balance to cover your quoted price, or the quote cannot be
-                  submitted.
+                  The poster must have enough wallet balance to cover your quoted price, or the quote cannot be submitted.
                 </p>
               </CardHeader>
               <CardContent>
@@ -550,20 +706,31 @@ export function PostDetail() {
                   {quoteError && (
                     <p className="text-sm text-danger-600">{quoteError}</p>
                   )}
-                  <Input
-                    label="Your Price (P) *"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={quotePrice}
-                    onChange={(e) => {
-                      setQuotePrice(e.target.value)
-                      clearQuoteFieldError('price')
-                    }}
-                    error={quoteFieldErrors.price}
-                    required
-                    aria-required
-                  />
+                  <div>
+                    <Input
+                      label="Your Price (P) *"
+                      type="number"
+                      min={post?.budget_min ?? 0}
+                      max={post?.budget_max ?? undefined}
+                      step={0.01}
+                      value={quotePrice}
+                      onChange={(e) => {
+                        setQuotePrice(e.target.value)
+                        clearQuoteFieldError('price')
+                      }}
+                      error={quoteFieldErrors.price}
+                      required
+                      aria-required
+                    />
+                    {(post?.budget_min != null || post?.budget_max != null) && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        Budget range:{' '}
+                        {post.budget_min != null ? formatCurrency(post.budget_min) : '—'}
+                        {' – '}
+                        {post.budget_max != null ? formatCurrency(post.budget_max) : '—'}
+                      </p>
+                    )}
+                  </div>
                   <Textarea
                     label="Message *"
                     placeholder="Describe your approach, experience..."
@@ -636,6 +803,67 @@ export function PostDetail() {
           <h2 className="mb-4 text-lg font-semibold text-gray-900">
             Responses ({responses.length})
           </h2>
+
+          {/* Blocked-attempt cards — hide individual cards once balance covers that quoted amount */}
+          {blockedAttempts.filter(a => ownerBalance === null || ownerBalance < a.quoted_amount).length > 0 && (
+            <div className="mb-4 space-y-3">
+              {blockedAttempts.filter(a => ownerBalance === null || ownerBalance < a.quoted_amount).map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="flex flex-col gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4 sm:flex-row sm:items-center"
+                >
+                  <Wallet className="size-5 shrink-0 text-warning-600 sm:mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-warning-800">
+                      {attempt.provider_name} tried to quote you {formatCurrency(attempt.quoted_amount)}
+                    </p>
+                    <p className="mt-0.5 text-sm text-warning-700">
+                      You don't have enough funds. Add funds to your wallet or message {attempt.provider_name}.
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      onClick={() => navigate(ROUTES.WALLET)}
+                      className="rounded-lg bg-warning-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-warning-700"
+                    >
+                      Add Funds
+                    </button>
+                    <button
+                      onClick={() => void handleMessageProvider(attempt.provider_profile_id)}
+                      disabled={messagingProviderId === attempt.provider_profile_id}
+                      className="rounded-lg border border-warning-400 bg-white px-3 py-1.5 text-xs font-semibold text-warning-700 hover:bg-warning-100 disabled:opacity-50"
+                    >
+                      {messagingProviderId === attempt.provider_profile_id ? 'Opening…' : `Message ${attempt.provider_name}`}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Top-up prompt — shown when owner's balance is too low and no responses or attempts yet */}
+          {ownerBalance !== null &&
+            ownerBalance < (post?.budget_max ?? post?.budget_min ?? 1) &&
+            responses.length === 0 &&
+            blockedAttempts.length === 0 && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-warning-200 bg-warning-50 p-4">
+              <Wallet className="mt-0.5 size-5 shrink-0 text-warning-600" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-warning-800">
+                  Your wallet balance is too low to receive quotes
+                </p>
+                <p className="mt-0.5 text-sm text-warning-700">
+                  Providers cannot quote you until your wallet has sufficient funds. Top up your wallet so they can send you a price.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(ROUTES.WALLET)}
+                className="shrink-0 rounded-lg bg-warning-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-warning-700"
+              >
+                Top Up Wallet
+              </button>
+            </div>
+          )}
           {responses.length === 0 ? (
             <EmptyState
               icon={<MessageSquare className="size-12" />}

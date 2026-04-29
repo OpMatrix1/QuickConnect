@@ -53,18 +53,28 @@ export function getNotificationNavTarget(
     return `${ROUTES.PROFILE}?section=business`
   }
 
+  // Admin-facing dispute types → always go to admin reports
   if (type === 'payment_dispute') {
     const payId = typeof d.payment_id === 'string' ? d.payment_id : null
-    if (payId) {
-      return `${ROUTES.ADMIN_REPORTS}?payment=${encodeURIComponent(payId)}`
-    }
+    if (payId) return `${ROUTES.ADMIN_REPORTS}?payment=${encodeURIComponent(payId)}`
+    const bookingId = typeof d.booking_id === 'string' ? d.booking_id : null
+    if (bookingId) return `${ROUTES.ADMIN_REPORTS}`
+    return ROUTES.ADMIN_REPORTS
   }
 
+  // Dispute debit → wallet page for customer
+  if (type === 'dispute_debit') {
+    return ROUTES.WALLET
+  }
+
+  // Customer/provider dispute types → bookings page; admin variant goes to reports
   if (
     type === 'payment_disputed' ||
     type === 'payment_held' ||
     type === 'payment_released' ||
-    type === 'payment_refunded'
+    type === 'payment_refunded' ||
+    type === 'dispute_resolved' ||
+    type === 'dispute_statement'
   ) {
     const payId = typeof d.payment_id === 'string' ? d.payment_id : null
     const bookingId = typeof d.booking_id === 'string' ? d.booking_id : null
@@ -76,8 +86,28 @@ export function getNotificationNavTarget(
     }
   }
 
-  if (type.startsWith('quote')) {
-    return ROUTES.QUOTES
+  if (type === 'new_review') {
+    const bid = typeof d.booking_id === 'string' ? d.booking_id : null
+    if (bid) return `${ROUTES.MY_BOOKINGS}?booking=${encodeURIComponent(bid)}`
+    return ROUTES.MY_BOOKINGS
+  }
+
+  if (type.startsWith('quote') || type === 'quote_request') {
+    const qid = typeof d.quote_id === 'string' ? d.quote_id : null
+    return qid ? `${ROUTES.QUOTES}?quote=${encodeURIComponent(qid)}` : ROUTES.QUOTES
+  }
+
+  if (
+    type.startsWith('booking') ||
+    type.startsWith('payment_awaiting') ||
+    type.startsWith('settlement') ||
+    type === 'response_accepted' ||
+    type === 'response_rejected'
+  ) {
+    const bid = typeof d.booking_id === 'string' ? d.booking_id : null
+    if (bid) return `${ROUTES.MY_BOOKINGS}?booking=${encodeURIComponent(bid)}`
+    const pid = typeof d.post_id === 'string' ? d.post_id : null
+    if (pid) return ROUTES.POST_DETAIL.replace(':id', pid)
   }
 
   if (typeof d.booking_id === 'string' && d.booking_id) {

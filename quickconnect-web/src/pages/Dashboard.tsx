@@ -15,6 +15,7 @@ import {
   FolderPlus,
   Send,
   ClipboardList,
+  BookMarked,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
@@ -198,6 +199,72 @@ export function Dashboard() {
     )
   }, [])
 
+  const refreshOpportunities = useCallback(async (providerId: string) => {
+    const { data: services } = await supabase
+      .from('services')
+      .select('category_id')
+      .eq('provider_id', providerId)
+      .eq('is_active', true)
+    const categoryIds = [...new Set(((services || []) as { category_id: string }[]).map((s) => s.category_id))]
+    if (categoryIds.length > 0) {
+      const { data: postsData } = await supabase
+        .from('looking_for_posts')
+        .select(
+          `
+          *,
+          profiles!looking_for_posts_customer_id_fkey(full_name, avatar_url),
+          service_categories(name)
+        `
+        )
+        .eq('status', 'active')
+        .in('category_id', categoryIds)
+        .order('created_at', { ascending: false })
+        .limit(5)
+      setOpportunityPosts((postsData || []) as unknown as PostWithDetails[])
+    } else {
+      setOpportunityPosts([])
+    }
+  }, [])
+
+  const refreshCustomerPosts = useCallback(async (customerId: string) => {
+    const { data: postsData } = await supabase
+      .from('looking_for_posts')
+      .select(
+        `
+        *,
+        profiles!looking_for_posts_customer_id_fkey(full_name, avatar_url),
+        service_categories(name)
+      `
+      )
+      .eq('customer_id', customerId)
+      .order('created_at', { ascending: false })
+      .limit(5)
+    const posts = (postsData || []).map((p) => p as unknown as PostWithCategory)
+    setCustomerPosts(posts)
+
+    const { count: activeCount } = await supabase
+      .from('looking_for_posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('customer_id', customerId)
+      .eq('status', 'active')
+    setActivePostsCount(activeCount ?? 0)
+
+    if (posts.length > 0) {
+      const { data: responsesData } = await supabase
+        .from('looking_for_responses')
+        .select('post_id')
+        .in('post_id', posts.map((p) => p.id))
+      const responseCounts = (responsesData || []).reduce(
+        (acc, r: { post_id: string }) => {
+          acc[r.post_id] = (acc[r.post_id] || 0) + 1
+          return acc
+        },
+        {} as Record<string, number>
+      )
+      setCustomerPosts((prev) => prev.map((p) => ({ ...p, response_count: responseCounts[p.id] || 0 })))
+    }
+  }, [])
+
   const refreshCustomerBookings = useCallback(async (customerId: string) => {
     const { data: bookingsData } = await supabase
       .from('bookings')
@@ -245,14 +312,31 @@ export function Dashboard() {
 
     setProviderBookings((bookingsData || []) as unknown as BookingWithProvider[])
 
-    const { data: completedBookings } = await supabase
-      .from('bookings')
-      .select('agreed_price')
-      .eq('provider_id', providerId)
-      .eq('status', 'completed')
-    const completedList = (completedBookings || []) as { agreed_price: number | null }[]
-    const total = completedList.reduce((sum, b) => sum + (b.agreed_price || 0), 0)
-    setEarnings(total)
+    // Sum net earnings from wallet (payment_release credits = actual amount after platform fee)
+    const { data: spRow } = await supabase
+      .from('service_providers')
+      .select('profile_id')
+      .eq('id', providerId)
+      .single()
+    const profileId = (spRow as { profile_id: string } | null)?.profile_id
+    if (profileId) {
+      const { data: walletRow } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('user_id', profileId)
+        .single()
+      const walletId = (walletRow as { id: string } | null)?.id
+      if (walletId) {
+        const { data: txRows } = await supabase
+          .from('wallet_transactions')
+          .select('amount')
+          .eq('wallet_id', walletId)
+          .eq('type', 'payment_release')
+          .eq('direction', 'credit')
+        const total = ((txRows || []) as { amount: number }[]).reduce((sum, t) => sum + t.amount, 0)
+        setEarnings(total)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -389,6 +473,53 @@ export function Dashboard() {
       supabase.removeChannel(channel)
     }
   }, [user?.id, profile?.role, providerData?.id, refreshProviderBookings])
+
+  // Live: provider opportunities (looking_for_posts)
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'provider' || !providerData?.id) return
+    const pid = providerData.id
+
+    const channel = supabase
+      .channel(`dashboard-opportunities:${pid}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'looking_for_posts' },
+        () => { void refreshOpportunities(pid) }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id, profile?.role, providerData?.id, refreshOpportunities])
+
+  // Live: customer's own posts
+  useEffect(() => {
+    if (!user?.id || profile?.role !== 'customer') return
+
+    const channel = supabase
+      .channel(`dashboard-posts-customer:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'looking_for_posts',
+          filter: `customer_id=eq.${user.id}`,
+        },
+        () => { void refreshCustomerPosts(user.id) }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'looking_for_responses',
+        },
+        () => { void refreshCustomerPosts(user.id) }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user?.id, profile?.role, refreshCustomerPosts])
 
   async function fetchCustomerData(customerId: string) {
     const { data: postsData } = await supabase
@@ -592,6 +723,11 @@ export function Dashboard() {
           <Link to={ROUTES.MY_BOOKINGS}>
             <Button variant="outline" icon={<CalendarCheck className="size-5" />}>
               My Bookings
+            </Button>
+          </Link>
+          <Link to={ROUTES.MY_POSTS}>
+            <Button variant="outline" icon={<BookMarked className="size-5" />}>
+              My Posts
             </Button>
           </Link>
           <Link to={ROUTES.QUOTES}>

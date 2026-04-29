@@ -577,6 +577,9 @@ export type Database = {
           content: string
           is_read: boolean
           created_at: string
+          message_type: 'text' | 'image' | 'file'
+          media_url: string | null
+          media_name: string | null
         }
         Insert: {
           id?: string
@@ -586,6 +589,9 @@ export type Database = {
           content: string
           is_read?: boolean
           created_at?: string
+          message_type?: 'text' | 'image' | 'file'
+          media_url?: string | null
+          media_name?: string | null
         }
         Update: {
           id?: string
@@ -594,6 +600,9 @@ export type Database = {
           receiver_id?: string
           content?: string
           is_read?: boolean
+          message_type?: 'text' | 'image' | 'file'
+          media_url?: string | null
+          media_name?: string | null
         }
         Relationships: [
           {
