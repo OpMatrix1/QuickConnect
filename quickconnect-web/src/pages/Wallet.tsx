@@ -357,7 +357,7 @@ export function WalletPage() {
     try {
       const { error } = await supabase.rpc('withdraw_from_wallet', {
         p_amount: amount,
-        p_method: 'demo',
+        p_method: 'orange_money',
         p_destination: 'demo',
       } as never)
       if (error) throw error
